@@ -10,7 +10,7 @@ public class PhieuNhapRequest {
     private Integer maNCC;
     private Integer maKho;
     // NguoiLap sẽ được lấy từ JWT (Authentication)
-    private Integer nguoiDuyet; // (Optional)
+    private Integer nguoiDuyet;
     private String chungTu;
 
     // Danh sách các sản phẩm chi tiết
