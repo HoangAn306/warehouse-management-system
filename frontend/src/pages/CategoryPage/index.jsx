@@ -12,8 +12,9 @@ import {
   Card,
   Row,
   Col,
-  Tag,
+  //Tag,
   Tooltip,
+  Grid, // [1] Import Grid
 } from "antd";
 import {
   PlusOutlined,
@@ -30,12 +31,15 @@ import * as categoryService from "../../services/category.service";
 const PERM_VIEW = 140;
 const PERM_CREATE = 141;
 const PERM_EDIT = 142;
-const PERM_DELETE = 143; // Quyền Xóa & Khôi phục
+const PERM_DELETE = 143;
 
 const CategoryPage = () => {
+  // [2] Hook kiểm tra màn hình (screens.lg = PC/Laptop)
+  const screens = Grid.useBreakpoint();
+
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [inTrashMode, setInTrashMode] = useState(false); // State chuyển chế độ
+  const [inTrashMode, setInTrashMode] = useState(false);
 
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
@@ -53,12 +57,9 @@ const CategoryPage = () => {
     setLoading(true);
     try {
       let res;
-      // [QUAN TRỌNG] Phân luồng gọi API
       if (inTrashMode) {
-        // Gọi API lấy thùng rác
         res = await categoryService.getTrashCategories();
       } else {
-        // Gọi API lấy danh sách chính
         res = await categoryService.getAllCategories();
       }
 
@@ -71,10 +72,10 @@ const CategoryPage = () => {
         setCategories([]);
       }
     } catch (error) {
-      // messageApi.error("Không thể tải dữ liệu!");
       setCategories([]);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [inTrashMode]);
 
   // --- 2. CHECK QUYỀN ---
@@ -110,7 +111,7 @@ const CategoryPage = () => {
         setPermissions([]);
       }
     }
-  }, [fetchCategories]);
+  }, [fetchCategories]); // Đã thêm fetchCategories vào dependency
 
   const checkPerm = (id) => isAdmin || permissions.includes(id);
 
@@ -151,7 +152,6 @@ const CategoryPage = () => {
       .catch(() => {});
   };
 
-  // Xóa (Chuyển vào thùng rác)
   const handleDelete = (id) => {
     setDeletingId(id);
     setIsDeleteModalOpen(true);
@@ -161,83 +161,97 @@ const CategoryPage = () => {
     try {
       await categoryService.deleteCategory(deletingId);
       messageApi.success("Đã chuyển vào thùng rác!");
-      fetchCategories(); // Reload lại danh sách (bản ghi sẽ biến mất khỏi list chính)
+      fetchCategories();
     } catch (error) {
       messageApi.error("Lỗi khi xóa!");
     }
     setIsDeleteModalOpen(false);
   };
 
-  // [MỚI] Khôi phục (Lấy lại từ thùng rác)
   const handleRestore = async (id) => {
     try {
       await categoryService.restoreCategory(id);
       messageApi.success("Đã khôi phục loại hàng!");
-      fetchCategories(); // Reload lại list thùng rác (bản ghi sẽ biến mất khỏi đây)
+      fetchCategories();
     } catch (e) {
       messageApi.error("Lỗi khi khôi phục!");
     }
   };
 
+  // --- [3] CẤU HÌNH CỘT RESPONSIVE ---
+  // Logic: Hiển thị tất cả cột, cuộn ngang trên mobile.
+  // Ghim cột khi ở màn hình lớn (screens.lg).
   const columns = [
-    { title: "Mã Loại", dataIndex: "maLoai", width: 80, align: "center" },
-    { title: "Tên Loại Hàng", dataIndex: "tenLoai", render: (t) => <b>{t}</b> },
-    { title: "Mô Tả", dataIndex: "moTa" },
     {
-      title: "Trạng thái",
+      title: "Mã",
+      dataIndex: "maLoai",
+      width: 80,
       align: "center",
-      width: 120,
-      render: () =>
-        inTrashMode ? (
-          <Tag color="red">Đã xóa</Tag>
-        ) : (
-          <Tag color="green">Hoạt động</Tag>
-        ),
+      fixed: screens.lg ? "left" : null, // Ghim trái trên PC
     },
+    {
+      title: "Tên Loại Hàng",
+      dataIndex: "tenLoai",
+      width: 200,
+      fixed: screens.lg ? "left" : null, // Ghim trái trên PC
+      render: (t) => <b>{t}</b>,
+    },
+    {
+      title: "Mô Tả",
+      dataIndex: "moTa",
+      width: 250, // Đặt width để có thể cuộn ngang
+    },
+    // {
+    //   title: "Trạng thái",
+    //   align: "center",
+    //   width: 120,
+    //   render: () =>
+    //     inTrashMode ? (
+    //       <Tag color="red">Đã xóa</Tag>
+    //     ) : (
+    //       <Tag color="green">Hoạt động</Tag>
+    //     ),
+    // },
     {
       title: "Hành động",
       key: "action",
-      width: 150,
+      width: 110,
       align: "center",
+      fixed: screens.lg ? "right" : null, // Ghim phải trên PC
       render: (_, record) => {
         const allowEdit = checkPerm(PERM_EDIT);
         const allowDelete = checkPerm(PERM_DELETE);
 
         return (
-          <Space size="middle">
+          <Space size="small">
             {inTrashMode ? (
-              // Ở Thùng Rác: Nút Khôi Phục (Quyền 143)
               allowDelete && (
                 <Tooltip title="Khôi phục">
                   <Button
                     type="primary"
                     ghost
+                    size="small"
                     icon={<UndoOutlined />}
                     onClick={() => handleRestore(record.maLoai)}
-                  >
-                    Khôi phục
-                  </Button>
+                  />
                 </Tooltip>
               )
             ) : (
-              // Ở Danh Sách Chính: Sửa / Xóa
               <>
                 {allowEdit && (
-                  <Tooltip title="Sửa">
-                    <Button
-                      icon={<EditOutlined />}
-                      onClick={() => handleEdit(record)}
-                    />
-                  </Tooltip>
+                  <Button
+                    icon={<EditOutlined />}
+                    size="small"
+                    onClick={() => handleEdit(record)}
+                  />
                 )}
                 {allowDelete && (
-                  <Tooltip title="Xóa">
-                    <Button
-                      icon={<DeleteOutlined />}
-                      danger
-                      onClick={() => handleDelete(record.maLoai)}
-                    />
-                  </Tooltip>
+                  <Button
+                    icon={<DeleteOutlined />}
+                    danger
+                    size="small"
+                    onClick={() => handleDelete(record.maLoai)}
+                  />
                 )}
               </>
             )}
@@ -256,7 +270,8 @@ const CategoryPage = () => {
   }
 
   return (
-    <div>
+    <div style={{ padding: "0 10px" }}>
+      {/* Thêm padding nhỏ cho mobile */}
       {contextHolder}
       <Card
         style={{ marginBottom: 16 }}
@@ -265,8 +280,13 @@ const CategoryPage = () => {
         <Row
           justify="space-between"
           align="middle"
+          gutter={[0, 16]} // Khoảng cách dọc khi xuống dòng
         >
-          <Col>
+          {/* Tiêu đề: Mobile full dòng, Desktop tự động */}
+          <Col
+            xs={24}
+            md="auto"
+          >
             <h3 style={{ margin: 0, color: inTrashMode ? "red" : "inherit" }}>
               {inTrashMode ? (
                 <>
@@ -277,8 +297,19 @@ const CategoryPage = () => {
               )}
             </h3>
           </Col>
-          <Col>
-            <Space>
+
+          {/* Nút bấm: Mobile full dòng, Desktop tự động */}
+          <Col
+            xs={24}
+            md="auto"
+          >
+            <Space
+              wrap
+              style={{
+                width: "100%",
+                justifyContent: screens.md ? "flex-end" : "flex-start",
+              }}
+            >
               <Button
                 icon={<ReloadOutlined />}
                 onClick={fetchCategories}
@@ -291,7 +322,7 @@ const CategoryPage = () => {
                   icon={<ArrowLeftOutlined />}
                   onClick={() => setInTrashMode(false)}
                 >
-                  Quay lại danh sách
+                  Quay lại
                 </Button>
               ) : (
                 <>
@@ -319,21 +350,25 @@ const CategoryPage = () => {
           </Col>
         </Row>
       </Card>
-
       <Table
         className="fixed-height-table"
         columns={columns}
         dataSource={categories}
         loading={loading}
         rowKey="maLoai"
-        pagination={{ pageSize: 10 }}
+        pagination={{ pageSize: 10, size: "small" }}
+        // Scroll ngang 700px để đảm bảo đủ chỗ cho tất cả các cột
+        scroll={{ x: 700 }}
+        size={screens.md ? "middle" : "small"} // Mobile dùng bảng nhỏ
       />
-
       <Modal
         title={editingCategory ? "Sửa Loại Hàng" : "Thêm Loại Hàng"}
         open={isModalVisible}
         onOk={handleOk}
         onCancel={() => setIsModalVisible(false)}
+        // Responsive width cho Modal
+        width={screens.md ? 520 : "100%"}
+        style={{ top: 20 }}
       >
         <Form
           form={form}
@@ -342,7 +377,7 @@ const CategoryPage = () => {
           <Form.Item
             name="tenLoai"
             label="Tên Loại Hàng"
-            rules={[{ required: true }]}
+            rules={[{ required: true, message: "Vui lòng nhập tên loại!" }]}
           >
             <Input />
           </Form.Item>
@@ -354,7 +389,6 @@ const CategoryPage = () => {
           </Form.Item>
         </Form>
       </Modal>
-
       <Modal
         title="Xác nhận xóa"
         open={isDeleteModalOpen}

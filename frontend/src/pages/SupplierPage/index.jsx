@@ -13,7 +13,8 @@ import {
   Row,
   Col,
   Tooltip,
-  Tag,
+  //Tag,
+  Grid, // [1] Import Grid để kiểm tra kích thước màn hình
 } from "antd";
 import {
   PlusOutlined,
@@ -21,9 +22,9 @@ import {
   DeleteOutlined,
   ReloadOutlined,
   SearchOutlined,
-  RestOutlined, // Icon thùng rác
-  UndoOutlined, // Icon khôi phục
-  ArrowLeftOutlined, // Icon quay lại
+  RestOutlined,
+  UndoOutlined,
+  ArrowLeftOutlined,
   ClearOutlined,
 } from "@ant-design/icons";
 import * as supplierService from "../../services/supplier.service";
@@ -35,6 +36,10 @@ const PERM_EDIT = 62; // Cập nhật
 const PERM_DELETE = 63; // Xóa (kiêm Khôi phục / Thùng rác)
 
 const SupplierPage = () => {
+  // [2] Hook kiểm tra màn hình
+  // screens.lg = true (>= 992px) -> Máy tính. False -> Mobile/Tablet.
+  const screens = Grid.useBreakpoint();
+
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -215,33 +220,61 @@ const SupplierPage = () => {
       .catch(() => {});
   };
 
-  // --- CẤU HÌNH CỘT ---
+  // --- [3] CẤU HÌNH CỘT RESPONSIVE ---
+  // Logic: screens.lg (PC) thì ghim cột. Mobile thì thả lỏng.
   const columns = [
-    { title: "Mã", dataIndex: "maNCC", width: 80, align: "center" },
+    {
+      title: "Mã",
+      dataIndex: "maNCC",
+      width: 80,
+      align: "center",
+      // Ghim trái trên PC
+      fixed: screens.lg ? "left" : null,
+    },
     {
       title: "Tên NCC",
       dataIndex: "tenNCC",
       key: "tenNCC",
-      render: (text) => <span style={{ fontWeight: 500 }}>{text}</span>,
+      width: 200,
+      // Ghim trái trên PC
+      fixed: screens.lg ? "left" : null,
+      render: (t) => <b>{t}</b>,
     },
-    { title: "Người Liên Hệ", dataIndex: "nguoiLienHe", key: "nguoiLienHe" },
-    { title: "SĐT", dataIndex: "sdt", key: "sdt" },
-    { title: "Email", dataIndex: "email", key: "email" },
     {
-      title: "Trạng thái",
-      align: "center",
-      width: 120,
-      render: () =>
-        inTrashMode ? (
-          <Tag color="red">Đã xóa</Tag>
-        ) : (
-          <Tag color="green">Hoạt động</Tag>
-        ),
+      title: "Người Liên Hệ",
+      dataIndex: "nguoiLienHe",
+      key: "nguoiLienHe",
+      width: 150,
     },
+    {
+      title: "SĐT",
+      dataIndex: "sdt",
+      key: "sdt",
+      width: 120,
+    },
+    {
+      title: "Email",
+      dataIndex: "email",
+      key: "email",
+      width: 180,
+    },
+    // {
+    //   title: "Trạng thái",
+    //   align: "center",
+    //   width: 120,
+    //   render: () =>
+    //     inTrashMode ? (
+    //       <Tag color="red">Đã xóa</Tag>
+    //     ) : (
+    //       <Tag color="green">Hoạt động</Tag>
+    //     ),
+    // },
     {
       title: "Hành động",
       key: "action",
       width: 150,
+      // Ghim phải trên PC
+      fixed: screens.lg ? "right" : null,
       render: (_, record) => {
         // [CHECK QUYỀN]
         const allowEdit = checkPerm(PERM_EDIT); // 62
@@ -306,9 +339,10 @@ const SupplierPage = () => {
   }
 
   return (
-    <div>
+    <div style={{ padding: "0 10px" }}>
+      {" "}
+      {/* Padding nhỏ cho mobile */}
       {contextHolder}
-
       <Card
         style={{ marginBottom: 16 }}
         bodyStyle={{ padding: "16px" }}
@@ -318,16 +352,24 @@ const SupplierPage = () => {
           align="middle"
           justify="space-between"
         >
-          <Col>
+          {/* Cụm tìm kiếm: Full width trên mobile */}
+          <Col
+            xs={24}
+            md={12}
+          >
             {!inTrashMode ? (
-              <Space>
+              <Space
+                wrap
+                style={{ width: "100%" }}
+              >
                 <Input
                   placeholder="Tìm kiếm NCC..."
                   prefix={<SearchOutlined />}
                   value={keyword}
                   onChange={(e) => setKeyword(e.target.value)}
                   onPressEnter={handleSearch}
-                  style={{ width: 250 }}
+                  // Responsive input width
+                  style={{ width: screens.md ? 250 : "100%" }}
                 />
                 <Button
                   type="primary"
@@ -352,8 +394,13 @@ const SupplierPage = () => {
             )}
           </Col>
 
-          <Col>
-            <Space>
+          {/* Cụm nút bấm: Full width trên mobile, canh phải trên PC */}
+          <Col
+            xs={24}
+            md={12}
+            style={{ textAlign: screens.md ? "right" : "left" }}
+          >
+            <Space wrap>
               <Button
                 icon={<ReloadOutlined />}
                 onClick={handleReload}
@@ -403,22 +450,26 @@ const SupplierPage = () => {
           </Col>
         </Row>
       </Card>
-
       <Table
         className="fixed-height-table"
         columns={columns}
         dataSource={suppliers}
         loading={loading}
         rowKey="maNCC"
-        pagination={{ pageSize: 5 }}
+        pagination={{ pageSize: 5, size: "small" }}
+        // [QUAN TRỌNG] Cho phép cuộn ngang
+        scroll={{ x: 1000 }}
+        size="small"
       />
-
       {/* MODAL THÊM/SỬA */}
       <Modal
         title={editingSupplier ? "Sửa Nhà Cung Cấp" : "Thêm Nhà Cung Cấp"}
         open={isModalVisible}
         onOk={handleOk}
         onCancel={() => setIsModalVisible(false)}
+        // Responsive Modal
+        width={screens.md ? 600 : "100%"}
+        style={{ top: 20 }}
       >
         <Form
           form={form}
@@ -459,7 +510,6 @@ const SupplierPage = () => {
           </Form.Item>
         </Form>
       </Modal>
-
       {/* MODAL XÁA */}
       <Modal
         title="Xác nhận xóa"

@@ -14,6 +14,7 @@ import {
   Row,
   Col,
   Tooltip,
+  Grid, // [1] Import Grid để kiểm tra kích thước màn hình
 } from "antd";
 import {
   PlusOutlined,
@@ -22,21 +23,24 @@ import {
   ReloadOutlined,
   EyeOutlined,
   SearchOutlined,
-  RestOutlined, // Icon thùng rác
-  UndoOutlined, // Icon khôi phục
-  ArrowLeftOutlined, // Icon quay lại
+  RestOutlined,
+  UndoOutlined,
+  ArrowLeftOutlined,
   ClearOutlined,
 } from "@ant-design/icons";
-// Import service
 import * as warehouseService from "../../services/warehouse.service";
 
 // --- CẤU HÌNH ID QUYỀN (KHO HÀNG) ---
-const PERM_VIEW = 70; // Xem danh sách
-const PERM_CREATE = 71; // Tạo mới
-const PERM_EDIT = 72; // Cập nhật
-const PERM_DELETE = 73; // Xóa (kiêm Khôi phục / Vào thùng rác)
+const PERM_VIEW = 70;
+const PERM_CREATE = 71;
+const PERM_EDIT = 72;
+const PERM_DELETE = 73;
 
 const WarehousePage = () => {
+  // [2] Hook kiểm tra màn hình
+  // screens.lg = true (>= 992px) -> Máy tính. False -> Mobile/Tablet dọc.
+  const screens = Grid.useBreakpoint();
+
   const [warehouses, setWarehouses] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -66,28 +70,22 @@ const WarehousePage = () => {
   // State bộ lọc tìm kiếm
   const [keyword, setKeyword] = useState("");
 
-  // --- 1. TẢI DỮ LIỆU (ĐÃ SỬA) ---
+  // --- 1. TẢI DỮ LIỆU ---
   const fetchWarehouses = useCallback(async () => {
     setLoading(true);
     try {
       let res;
-
-      // [QUAN TRỌNG] Phân luồng gọi API
       if (inTrashMode) {
-        // Gọi API thùng rác (đã có trong service bạn cung cấp)
         res = await warehouseService.getTrashWarehouses();
       } else {
-        // Gọi API danh sách chính
         res = await warehouseService.getAllWarehouses();
       }
 
-      let data = res.data ? res.data : res; // Xử lý tùy wrapper api trả về
+      let data = res.data ? res.data : res;
       if (data && data.content) data = data.content;
 
       if (Array.isArray(data)) {
-        // Chỉ lọc theo từ khóa tìm kiếm (bỏ lọc daXoa vì API đã trả về đúng loại rồi)
         let filtered = data;
-
         if (keyword) {
           filtered = filtered.filter(
             (item) =>
@@ -96,14 +94,12 @@ const WarehousePage = () => {
                 item.diaChi.toLowerCase().includes(keyword.toLowerCase()))
           );
         }
-
         setWarehouses(filtered);
       } else {
         setWarehouses([]);
       }
     } catch (error) {
       console.error(error);
-      // messageApi.error("Không thể tải danh sách kho!");
       setWarehouses([]);
     }
     setLoading(false);
@@ -140,10 +136,8 @@ const WarehousePage = () => {
         setPermissions([]);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Gọi lại API khi thay đổi chế độ hoặc keyword
   useEffect(() => {
     fetchWarehouses();
   }, [fetchWarehouses]);
@@ -196,20 +190,22 @@ const WarehousePage = () => {
     try {
       await warehouseService.deleteWarehouse(deletingId);
       messageApi.success("Đã chuyển vào thùng rác!");
-      fetchWarehouses(); // Reload để item biến mất khỏi list chính
+      fetchWarehouses();
     } catch (error) {
-      const errorMessage = error.response?.data?.message || error.response?.data || "Không thể xóa (có thể do ràng buộc dữ liệu)!";
+      const errorMessage =
+        error.response?.data?.message ||
+        error.response?.data ||
+        "Không thể xóa!";
       messageApi.error(errorMessage);
     }
     setIsDeleteModalOpen(false);
   };
 
-  // [SỬA] Kích hoạt chức năng khôi phục
   const handleRestore = async (id) => {
     try {
       await warehouseService.restoreWarehouse(id);
       messageApi.success("Đã khôi phục kho!");
-      fetchWarehouses(); // Reload để item biến mất khỏi thùng rác
+      fetchWarehouses();
     } catch (e) {
       messageApi.error("Lỗi khôi phục");
     }
@@ -226,85 +222,96 @@ const WarehousePage = () => {
     }
   };
 
-  // --- CẤU HÌNH CỘT ---
+  // --- [3] CẤU HÌNH CỘT RESPONSIVE ---
+  // Logic: screens.lg (PC) thì ghim cột. Mobile thì thả lỏng.
   const columns = [
     {
       title: "Tên Kho",
       dataIndex: "tenKho",
       key: "tenKho",
+      width: 180,
+      // Ghim trái trên PC
+      fixed: screens.lg ? "left" : null,
       render: (t) => <b>{t}</b>,
     },
-    { title: "Địa Chỉ", dataIndex: "diaChi", key: "diaChi" },
-    { title: "Ghi Chú", dataIndex: "ghiChu", key: "ghiChu" },
     {
-      title: "Trạng thái",
-      align: "center",
-      render: (_, record) =>
-        inTrashMode ? (
-          <Tag color="red">Đã xóa</Tag>
-        ) : (
-          <Tag color="green">Hoạt động</Tag>
-        ),
+      title: "Địa Chỉ",
+      dataIndex: "diaChi",
+      key: "diaChi",
+      width: 250, // Đặt width để bảng có thể cuộn ngang
     },
     {
-          title: "Trạng thái",
-          align: "center",
-          width: 120,
-          render: () =>
-            inTrashMode ? (
-              <Tag color="red">Đã xóa</Tag>
-            ) : (
-              <Tag color="green">Hoạt động</Tag>
-            ),
-        },
+      title: "Ghi Chú",
+      dataIndex: "ghiChu",
+      key: "ghiChu",
+      width: 150,
+    },
+    // {
+    //   title: "Trạng thái",
+    //   align: "center",
+    //   width: 120,
+    //   render: (_, record) =>
+    //     inTrashMode ? (
+    //       <Tag color="red">Đã xóa</Tag>
+    //     ) : (
+    //       <Tag color="green">Hoạt động</Tag>
+    //     ),
+    // },
+    // [Đã xóa cột Trạng thái bị lặp]
     {
       title: "Hành động",
       key: "action",
-      width: 200,
+      width: 160,
+      align: "center",
+      // Ghim phải trên PC
+      fixed: screens.lg ? "right" : null,
       render: (_, record) => {
-        const allowEdit = checkPerm(PERM_EDIT); // 72
-        const allowDelete = checkPerm(PERM_DELETE); // 73
+        const allowEdit = checkPerm(PERM_EDIT);
+        const allowDelete = checkPerm(PERM_DELETE);
 
         return (
-          <Space size="small">
-            <Tooltip title="Xem tồn kho">
-              <Button
-                icon={<EyeOutlined />}
-                onClick={() => handleViewInventory(record)}
-              />
-            </Tooltip>
+         <Space size="small">
+            {/* [ĐÃ SỬA] Chỉ hiển thị nút Xem Tồn Kho khi KHÔNG ở trong thùng rác */}
+            {!inTrashMode && (
+              <Tooltip title="Xem tồn kho">
+                <Button
+                  icon={<EyeOutlined />}
+                  size="small"
+                  onClick={() => handleViewInventory(record)}
+                />
+              </Tooltip>
+            )}
 
             {inTrashMode ? (
-              // Thùng rác: Hiện Khôi Phục nếu có quyền Xóa (73)
               allowDelete && (
-                <Tooltip title="Khôi phục ">
+                <Tooltip title="Khôi phục">
                   <Button
                     type="primary"
                     ghost
+                    size="small"
                     icon={<UndoOutlined />}
                     onClick={() => handleRestore(record.maKho)}
-                  >
-                    Khôi phục
-                  </Button>
+                  />
                 </Tooltip>
               )
             ) : (
-              // Danh sách chính: Hiện Sửa / Xóa
               <>
                 {allowEdit && (
-                  <Tooltip title="Cập nhật ">
+                  <Tooltip title="Cập nhật">
                     <Button
                       icon={<EditOutlined />}
+                      size="small"
                       onClick={() => handleEdit(record)}
                     />
                   </Tooltip>
                 )}
 
                 {allowDelete && (
-                  <Tooltip title="Xóa ">
+                  <Tooltip title="Xóa">
                     <Button
                       icon={<DeleteOutlined />}
                       danger
+                      size="small"
                       onClick={() => handleDelete(record.maKho)}
                     />
                   </Tooltip>
@@ -317,7 +324,6 @@ const WarehousePage = () => {
     },
   ];
 
-  // Chặn truy cập nếu không có quyền Xem (70)
   if (!loading && permissions.length > 0 && !checkPerm(PERM_VIEW)) {
     return (
       <Card style={{ margin: 20, textAlign: "center" }}>
@@ -331,7 +337,9 @@ const WarehousePage = () => {
   }
 
   return (
-    <div>
+    <div style={{ padding: "0 10px" }}>
+      {" "}
+      {/* Padding nhỏ cho mobile */}
       {contextHolder}
       <Card
         style={{ marginBottom: 16 }}
@@ -342,7 +350,11 @@ const WarehousePage = () => {
           align="middle"
           gutter={[16, 16]}
         >
-          <Col span={8}>
+          {/* Ô tìm kiếm: Full width trên mobile, 8 col trên PC */}
+          <Col
+            xs={24}
+            md={8}
+          >
             <Input
               placeholder="Tìm tên kho hoặc địa chỉ..."
               prefix={<SearchOutlined />}
@@ -350,8 +362,13 @@ const WarehousePage = () => {
               onChange={(e) => setKeyword(e.target.value)}
             />
           </Col>
-          <Col>
-            <Space>
+          {/* Cụm nút bấm: Full width trên mobile, canh phải trên PC */}
+          <Col
+            xs={24}
+            md={16}
+            style={{ textAlign: screens.md ? "right" : "left" }}
+          >
+            <Space wrap>
               <Button
                 icon={<ReloadOutlined />}
                 onClick={fetchWarehouses}
@@ -362,16 +379,15 @@ const WarehousePage = () => {
                 icon={<ClearOutlined />}
                 onClick={() => setKeyword("")}
               >
-                Xóa tìm kiếm
+                Xóa tìm
               </Button>
 
-              {/* Logic nút Thùng rác / Quay lại */}
               {inTrashMode ? (
                 <Button
                   icon={<ArrowLeftOutlined />}
                   onClick={() => setInTrashMode(false)}
                 >
-                  Quay lại danh sách
+                  Quay lại
                 </Button>
               ) : (
                 <>
@@ -400,27 +416,29 @@ const WarehousePage = () => {
           </Col>
         </Row>
       </Card>
-
       {inTrashMode && (
-        <h3 style={{ color: "red", marginLeft: 10 }}>
-          Thùng rác kho hàng
-        </h3>
+        <h3 style={{ color: "red", marginLeft: 10 }}>Thùng rác kho hàng</h3>
       )}
-
       <Table
         className="fixed-height-table"
         columns={columns}
         dataSource={warehouses}
         loading={loading}
         rowKey="maKho"
-        pagination={{ pageSize: 5 }}
+        pagination={{ pageSize: 5, size: "small" }}
+        // [QUAN TRỌNG] Cho phép cuộn ngang
+        scroll={{ x: 800 }}
+        size="small"
       />
-
+      {/* --- MODAL THÊM/SỬA --- */}
       <Modal
         title={editingWarehouse ? "Cập nhật Kho" : "Tạo Kho mới"}
         open={isModalVisible}
         onOk={handleOk}
         onCancel={() => setIsModalVisible(false)}
+        // Responsive Modal
+        width={screens.md ? 600 : "100%"}
+        style={{ top: 20 }}
       >
         <Form
           form={form}
@@ -448,7 +466,6 @@ const WarehousePage = () => {
           </Form.Item>
         </Form>
       </Modal>
-
       <Modal
         title="Xác nhận xóa"
         open={isDeleteModalOpen}
@@ -460,7 +477,7 @@ const WarehousePage = () => {
       >
         <p>Bạn có chắc muốn xóa kho này không?</p>
       </Modal>
-
+      {/* --- MODAL CHI TIẾT TỒN KHO --- */}
       <Modal
         title={`Chi tiết tồn kho: ${currentWarehouseName}`}
         open={isDetailModalOpen}
@@ -473,22 +490,26 @@ const WarehousePage = () => {
             Đóng
           </Button>,
         ]}
-        width={700}
+        width={screens.md ? 700 : "100%"}
+        style={{ top: 20 }}
       >
         <Table
           dataSource={inventoryList}
           rowKey="maSP"
-          pagination={{ pageSize: 5 }}
+          pagination={{ pageSize: 5, size: "small" }}
+          size="small"
+          scroll={{ x: 500 }}
           columns={[
-            { title: "Mã SP", dataIndex: "maSP" },
-            { title: "Tên Sản Phẩm", dataIndex: "tenSP" },
+            { title: "Mã SP", dataIndex: "maSP", width: 80 },
+            { title: "Tên Sản Phẩm", dataIndex: "tenSP", width: 150 },
             {
-              title: "Số Lượng Tồn",
+              title: "Tồn",
               dataIndex: "soLuongTon",
               align: "center",
+              width: 80,
               render: (v) => <Tag color="blue">{v}</Tag>,
             },
-            { title: "Đơn Vị", dataIndex: "donViTinh" },
+            { title: "ĐVT", dataIndex: "donViTinh", width: 80 },
           ]}
         />
       </Modal>

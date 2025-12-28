@@ -12,6 +12,7 @@ import {
   Table,
   Spin,
   Tabs,
+  Grid, // [1] Import Grid để bắt kích thước màn hình
 } from "antd";
 import {
   ArrowUpOutlined,
@@ -21,7 +22,7 @@ import {
   DollarOutlined,
   ShopOutlined,
 } from "@ant-design/icons";
-// Thư viện biểu đồ (cần cài đặt: npm install recharts)
+// Thư viện biểu đồ
 import {
   AreaChart,
   Area,
@@ -41,6 +42,9 @@ const { RangePicker } = DatePicker;
 const PERM_DASHBOARD_VIEW = 130;
 
 const Dashboard = () => {
+  // [2] Hook kiểm tra màn hình (screens.md = true nghĩa là PC/Tablet, false là Mobile)
+  const screens = Grid.useBreakpoint();
+
   const [loading, setLoading] = useState(false);
 
   // State dữ liệu
@@ -69,7 +73,6 @@ const Dashboard = () => {
     if (storedUser) {
       try {
         const user = JSON.parse(storedUser);
-        // Fix dữ liệu lồng nếu có
         const userData =
           user.quyen && !Array.isArray(user.quyen) && user.quyen.maNguoiDung
             ? user.quyen
@@ -95,7 +98,6 @@ const Dashboard = () => {
 
   // 1. Hàm tải dữ liệu tổng hợp
   const fetchData = useCallback(async () => {
-    // [!] Nếu không có quyền thì không gọi API để tránh lỗi 403 ngầm
     if (!canViewDashboard) return;
 
     setLoading(true);
@@ -106,7 +108,6 @@ const Dashboard = () => {
       };
       const year = filter.from.year();
 
-      // Gọi song song các API để tối ưu tốc độ
       const [resStats, resChart, resTop, resAlerts] = await Promise.allSettled([
         dashboardService.getStats(dateParams),
         dashboardService.getChartData(year),
@@ -114,11 +115,10 @@ const Dashboard = () => {
           ...dateParams,
           type: "export",
           limit: 5,
-        }), // Mặc định xem top xuất
+        }),
         dashboardService.getAlerts(),
       ]);
 
-      // Xử lý kết quả
       if (resStats.status === "fulfilled") setStats(resStats.value.data || {});
       if (resChart.status === "fulfilled")
         setChartData(resChart.value.data || []);
@@ -134,19 +134,16 @@ const Dashboard = () => {
         );
     } catch (error) {
       console.error("Dashboard Error:", error);
-      // message.error("Không thể tải dữ liệu Dashboard.");
     }
     setLoading(false);
   }, [filter, canViewDashboard]);
 
-  // [!] CHỈ GỌI API KHI CÓ QUYỀN
   useEffect(() => {
     if (canViewDashboard) {
       fetchData();
     }
   }, [fetchData, canViewDashboard]);
 
-  // Xử lý khi đổi ngày
   const handleDateChange = (dates) => {
     if (dates) {
       setFilter({ from: dates[0], to: dates[1] });
@@ -155,12 +152,19 @@ const Dashboard = () => {
 
   // Cấu hình cột cho bảng Top Sản phẩm
   const topProductColumns = [
-    { title: "Sản phẩm", dataIndex: "tenSP", key: "tenSP" },
     {
-      title: "Số lượng",
+      title: "Sản phẩm",
+      dataIndex: "tenSP",
+      key: "tenSP",
+      // Mobile thì cho phép tên dài xuống dòng, không fix width cứng
+      width: screens.md ? undefined : 150,
+    },
+    {
+      title: "SL", // Rút gọn tên cột trên mobile
       dataIndex: "tongSoLuong",
       key: "tongSoLuong",
       align: "center",
+      width: 60,
     },
     {
       title: "Doanh thu",
@@ -168,19 +172,19 @@ const Dashboard = () => {
       key: "tongGiaTri",
       align: "right",
       render: formatCurrency,
+      width: 120,
     },
   ];
 
   // Cấu hình cột cho bảng Cảnh báo
   const alertColumns = [
-    { title: "Mã", dataIndex: "maSP", width: 60 },
+    { title: "Mã", dataIndex: "maSP", width: 60, responsive: ["sm"] }, // Ẩn mã trên điện thoại quá nhỏ
     { title: "Tên Sản Phẩm", dataIndex: "tenSP" },
     {
       title: "Tồn Kho",
-      key: "tonKho", // Bỏ dataIndex cứng
+      key: "tonKho",
       width: 120,
       render: (_, record) => {
-        // [!] Fix logic: Kiểm tra xem backend trả về 'soLuongTon' hay 'tonHienTai'
         let ton = 0;
         if (record.soLuongTon !== undefined) ton = record.soLuongTon;
         else if (record.tonHienTai !== undefined) ton = record.tonHienTai;
@@ -197,7 +201,6 @@ const Dashboard = () => {
     },
   ];
 
-  // [!] 4. HIỂN THỊ NẾU KHÔNG CÓ QUYỀN
   if (!canViewDashboard) {
     return (
       <div style={{ padding: 24 }}>
@@ -215,26 +218,43 @@ const Dashboard = () => {
 
   return (
     <div style={{ padding: "0 10px" }}>
-      {/* --- THANH CÔNG CỤ --- */}
+      {/* --- THANH CÔNG CỤ (RESPONSIVE) --- */}
       <div
         style={{
           marginBottom: 20,
           display: "flex",
+          // [Responsive] Mobile: Xếp dọc (column), Desktop: Xếp ngang (row)
+          flexDirection: screens.md ? "row" : "column",
           justifyContent: "space-between",
-          alignItems: "center",
+          // [Responsive] Mobile: Căn trái, Desktop: Căn giữa theo trục dọc
+          alignItems: screens.md ? "center" : "flex-start",
+          gap: 10, // Tạo khoảng cách giữa Title và Bộ lọc khi xuống dòng
         }}
       >
-        <h2 style={{ margin: 0 }}>Tổng Quan Kho Hàng</h2>
-        <Space>
-          <span>Thời gian:</span>
+        <h2 style={{ margin: 0 }}>Tổng Quan Kho</h2>
+
+        {/* Space bọc RangePicker và Button */}
+        <Space
+          // [Responsive] Mobile: button xuống dòng nếu thiếu chỗ, width 100%
+          direction={screens.md ? "horizontal" : "vertical"}
+          style={{ width: screens.md ? "auto" : "100%" }}
+          size={10}
+        >
+          <span style={{ display: screens.md ? "inline" : "none" }}>
+            Thời gian:
+          </span>
           <RangePicker
             value={[filter.from, filter.to]}
             onChange={handleDateChange}
             allowClear={false}
+            // [Responsive] Mobile: RangePicker full width để dễ bấm
+            style={{ width: screens.md ? "auto" : "100%" }}
           />
           <Button
             icon={<ReloadOutlined />}
             onClick={fetchData}
+            // [Responsive] Mobile: Button full width
+            block={!screens.md}
           >
             Làm mới
           </Button>
@@ -248,6 +268,7 @@ const Dashboard = () => {
       ) : (
         <>
           {/* --- 1. THẺ THỐNG KÊ (STATS) --- */}
+          {/* Gutter: Khoảng cách giữa các thẻ. xs=24 tự động xếp chồng trên mobile */}
           <Row gutter={[16, 16]}>
             <Col
               xs={24}
@@ -340,14 +361,15 @@ const Dashboard = () => {
               lg={16}
             >
               <Card
-                title={`Biểu đồ Nhập - Xuất (Năm ${filter.from.year()})`}
+                title={`Biểu đồ (${filter.from.year()})`}
                 bordered={false}
+                bodyStyle={{ padding: screens.md ? 24 : "24px 0" }} // Mobile giảm padding ngang
               >
                 <div style={{ height: 350, width: "100%" }}>
                   <ResponsiveContainer>
                     <AreaChart
                       data={chartData}
-                      margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }} // Giảm margin phải cho mobile
                     >
                       <defs>
                         <linearGradient
@@ -389,11 +411,13 @@ const Dashboard = () => {
                       </defs>
                       <XAxis dataKey="thang" />
                       <YAxis
+                        // Rút gọn số trên trục Y (ví dụ 1.000.000 -> 1M)
                         tickFormatter={(value) =>
                           new Intl.NumberFormat("en", {
                             notation: "compact",
                           }).format(value)
                         }
+                        width={40} // Thu nhỏ chiều rộng trục Y để đỡ chiếm chỗ
                       />
                       <CartesianGrid strokeDasharray="3 3" />
                       <Tooltip
@@ -430,7 +454,7 @@ const Dashboard = () => {
               lg={8}
             >
               <Card
-                title="Top 5 Sản phẩm Bán chạy"
+                title="Top 5 Bán chạy"
                 bordered={false}
                 bodyStyle={{ padding: "0" }}
               >
@@ -440,6 +464,8 @@ const Dashboard = () => {
                   rowKey="maSP"
                   pagination={false}
                   size="small"
+                  // [Responsive] Thêm scroll ngang để không bị vỡ trên mobile
+                  scroll={{ x: 400 }}
                 />
               </Card>
             </Col>
@@ -454,8 +480,7 @@ const Dashboard = () => {
               <Card
                 title={
                   <span>
-                    <WarningOutlined style={{ color: "orange" }} /> Cảnh Báo Kho
-                    Hàng
+                    <WarningOutlined style={{ color: "orange" }} /> Cảnh Báo
                   </span>
                 }
                 bordered={false}
@@ -473,15 +498,14 @@ const Dashboard = () => {
                           rowKey="maSP"
                           pagination={{ pageSize: 5 }}
                           size="small"
+                          // [Responsive] Thêm scroll ngang
+                          scroll={{ x: 500 }}
                         />
                       ),
                     },
-                    
                     {
                       key: "3",
-                      label: `Hết hạn sử dụng (${
-                        alerts.hetHanSuDung?.length || 0
-                      })`,
+                      label: `Hết hạn (${alerts.hetHanSuDung?.length || 0})`,
                       children: (
                         <Table
                           dataSource={alerts.hetHanSuDung}
@@ -489,6 +513,7 @@ const Dashboard = () => {
                           rowKey="maSP"
                           pagination={{ pageSize: 5 }}
                           size="small"
+                          scroll={{ x: 500 }}
                         />
                       ),
                     },

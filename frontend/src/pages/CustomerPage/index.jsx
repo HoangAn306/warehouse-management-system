@@ -12,28 +12,33 @@ import {
   Card,
   Row,
   Col,
-  Tag,
+  //Tag,
   Tooltip,
+  Grid, // [1] Import Grid để kiểm tra kích thước màn hình
 } from "antd";
 import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
   SearchOutlined,
-  RestOutlined, // Icon thùng rác
-  UndoOutlined, // Icon khôi phục
-  ArrowLeftOutlined, // Icon quay lại
+  RestOutlined,
+  UndoOutlined,
+  ArrowLeftOutlined,
   ClearOutlined,
 } from "@ant-design/icons";
 import * as customerService from "../../services/customer.service";
 
 // --- CẤU HÌNH ID QUYỀN (KHÁCH HÀNG) ---
-const PERM_VIEW = 90; // Xem danh sách
-const PERM_CREATE = 91; // Tạo mới
-const PERM_EDIT = 92; // Cập nhật
-const PERM_DELETE = 93; // Xóa (kiêm Khôi phục / Thùng rác)
+const PERM_VIEW = 90;
+const PERM_CREATE = 91;
+const PERM_EDIT = 92;
+const PERM_DELETE = 93;
 
 const CustomerPage = () => {
+  // [2] Hook kiểm tra màn hình
+  // screens.lg = true (>= 992px) -> Máy tính. False -> Mobile/Tablet.
+  const screens = Grid.useBreakpoint();
+
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -103,22 +108,20 @@ const CustomerPage = () => {
         let rawPerms = user.dsQuyenSoHuu || user.quyen || [];
         if (!Array.isArray(rawPerms)) rawPerms = [];
 
-        // Chuyển quyền về dạng số nguyên
         const parsedPerms = rawPerms.map((p) => {
           if (typeof p === "object" && p !== null)
             return parseInt(p.maQuyen || p.id);
           return parseInt(p);
         });
 
-        // [!] LƯU QUYỀN VÀO STATE
         setPermissions(parsedPerms);
 
-        // Check quyền Xem (ID 90)
         const hasViewPerm = parsedPerms.includes(PERM_VIEW);
 
         if (roleName === "ADMIN" || hasViewPerm) {
-          // Chỉ fetch nếu có quyền Xem
-          fetchCustomers(keyword);
+          // [SỬA LỖI TẠI ĐÂY]
+          // Gọi không tham số để tải lại danh sách đầy đủ khi init hoặc đổi chế độ
+          fetchCustomers(); 
         } else {
           setLoading(false);
         }
@@ -128,8 +131,8 @@ const CustomerPage = () => {
     } else {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inTrashMode]); // Re-fetch khi đổi chế độ
+    // [SỬA LỖI TẠI ĐÂY] Thêm fetchCustomers vào dependency
+  }, [fetchCustomers]);
 
   const handleSearch = () => fetchCustomers(keyword);
   const handleReset = () => {
@@ -137,7 +140,6 @@ const CustomerPage = () => {
     fetchCustomers("");
   };
 
-  // Hàm check quyền nhanh
   const checkPerm = (id) => isAdmin || permissions.includes(id);
 
   // --- HANDLERS MODAL ---
@@ -170,7 +172,6 @@ const CustomerPage = () => {
         const inputName = values.tenKH.trim().toLowerCase();
         const inputPhone = (values.sdt || "").trim();
 
-        // Check trùng lặp Client-side (nếu cần)
         const isDuplicate = customers.some((kh) => {
           if (editingCustomer && kh.maKH === editingCustomer.maKH) return false;
           return (
@@ -224,44 +225,47 @@ const CustomerPage = () => {
     setDeletingId(null);
   };
 
-  // --- CẤU HÌNH CỘT ---
+  // --- [3] CẤU HÌNH CỘT RESPONSIVE ---
+  // Logic: screens.lg (PC) thì ghim cột. Mobile thì thả lỏng.
   const columns = [
     {
       title: "Tên Khách Hàng",
       dataIndex: "tenKH",
       width: 200,
+      // Ghim trái trên PC
+      fixed: screens.lg ? "left" : null,
       render: (t) => <b>{t}</b>,
     },
-    { title: "SĐT", dataIndex: "sdt" },
-    { title: "Email", dataIndex: "email" },
-    { title: "Địa Chỉ", dataIndex: "diaChi" },
-    {
-      title: "Trạng thái",
-      align: "center",
-      width: 120,
-      render: () =>
-        inTrashMode ? (
-          <Tag color="red">Đã xóa</Tag>
-        ) : (
-          <Tag color="green">Hoạt động</Tag>
-        ),
-    },
+    { title: "SĐT", dataIndex: "sdt", width: 120 },
+    { title: "Email", dataIndex: "email", width: 180 },
+    { title: "Địa Chỉ", dataIndex: "diaChi", width: 200 },
+    // {
+    //   title: "Trạng thái",
+    //   align: "center",
+    //   width: 120,
+    //   render: () =>
+    //     inTrashMode ? (
+    //       <Tag color="red">Đã xóa</Tag>
+    //     ) : (
+    //       <Tag color="green">Hoạt động</Tag>
+    //     ),
+    // },
     {
       title: "Hành động",
       key: "action",
       width: 150,
       align: "center",
+      // Ghim phải trên PC
+      fixed: screens.lg ? "right" : null,
       render: (_, record) => {
-        // [CHECK QUYỀN]
-        const allowEdit = checkPerm(PERM_EDIT); // 92
-        const allowDelete = checkPerm(PERM_DELETE); // 93
+        const allowEdit = checkPerm(PERM_EDIT);
+        const allowDelete = checkPerm(PERM_DELETE);
 
         return (
           <Space size="middle">
             {inTrashMode ? (
-              // 1. TRONG THÙNG RÁC: Chỉ hiện Khôi phục (Cần quyền Xóa 93)
               allowDelete && (
-                <Tooltip title="Khôi phục ">
+                <Tooltip title="Khôi phục">
                   <Button
                     type="primary"
                     ghost
@@ -273,10 +277,9 @@ const CustomerPage = () => {
                 </Tooltip>
               )
             ) : (
-              // 2. DANH SÁCH CHÍNH: Hiện Sửa (92) / Xóa (93)
               <>
                 {allowEdit && (
-                  <Tooltip title="Sửa thông tin ">
+                  <Tooltip title="Sửa thông tin">
                     <Button
                       icon={<EditOutlined />}
                       onClick={() => handleEdit(record)}
@@ -284,7 +287,7 @@ const CustomerPage = () => {
                   </Tooltip>
                 )}
                 {allowDelete && (
-                  <Tooltip title="Xóa tạm thời ">
+                  <Tooltip title="Xóa tạm thời">
                     <Button
                       icon={<DeleteOutlined />}
                       danger
@@ -300,7 +303,6 @@ const CustomerPage = () => {
     },
   ];
 
-  // Chặn truy cập nếu không có quyền Xem (90)
   if (!loading && permissions.length > 0 && !checkPerm(PERM_VIEW)) {
     return (
       <Card style={{ margin: 20, textAlign: "center" }}>
@@ -314,7 +316,7 @@ const CustomerPage = () => {
   }
 
   return (
-    <div>
+    <div style={{ padding: "0 10px" }}> {/* Padding nhỏ cho mobile */}
       {contextHolder}
       <Card
         style={{ marginBottom: 16 }}
@@ -325,10 +327,11 @@ const CustomerPage = () => {
           align="middle"
           justify="space-between"
         >
-          <Col span={12}>
+          {/* Cụm tìm kiếm: Full width trên mobile */}
+          <Col xs={24} md={12}>
             {inTrashMode ? (
               <h3 style={{ margin: 0, color: "#ff4d4f" }}>
-                <RestOutlined /> Thùng rác 
+                <RestOutlined /> Thùng rác
               </h3>
             ) : (
               <Input
@@ -337,12 +340,18 @@ const CustomerPage = () => {
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
                 onPressEnter={handleSearch}
-                style={{ maxWidth: 400 }}
+                // Responsive width
+                style={{ width: screens.md ? 400 : "100%" }}
               />
             )}
           </Col>
-          <Col>
-            <Space>
+          
+          {/* Cụm nút bấm: Full width trên mobile, canh phải trên PC */}
+          <Col 
+            xs={24} md={12} 
+            style={{ textAlign: screens.md ? 'right' : 'left' }}
+          >
+            <Space wrap>
               {!inTrashMode && (
                 <Button
                   type="primary"
@@ -360,7 +369,6 @@ const CustomerPage = () => {
                 Xóa tìm
               </Button>
 
-              {/* Logic Nút Chuyển Đổi */}
               {inTrashMode ? (
                 <Button
                   icon={<ArrowLeftOutlined />}
@@ -373,7 +381,6 @@ const CustomerPage = () => {
                 </Button>
               ) : (
                 <>
-                  {/* Nút Thùng rác: Chỉ hiện khi có quyền Xóa (93) hoặc Admin */}
                   {(isAdmin || checkPerm(PERM_DELETE)) && (
                     <Button
                       icon={<RestOutlined />}
@@ -387,7 +394,6 @@ const CustomerPage = () => {
                     </Button>
                   )}
 
-                  {/* Nút Tạo mới: Chỉ hiện khi có quyền Tạo (91) */}
                   {checkPerm(PERM_CREATE) && (
                     <Button
                       type="primary"
@@ -410,7 +416,10 @@ const CustomerPage = () => {
         dataSource={customers}
         loading={loading}
         rowKey="maKH"
-        pagination={{ pageSize: 5 }}
+        pagination={{ pageSize: 5, size: 'small' }}
+        // [QUAN TRỌNG] Cho phép cuộn ngang
+        scroll={{ x: 1000 }}
+        size="small"
       />
 
       {/* MODAL THÊM/SỬA */}
@@ -420,6 +429,9 @@ const CustomerPage = () => {
         onOk={handleOk}
         confirmLoading={submitLoading}
         onCancel={() => setIsModalVisible(false)}
+        // Responsive width
+        width={screens.md ? 600 : "100%"}
+        style={{ top: 20 }}
       >
         <Form
           form={form}

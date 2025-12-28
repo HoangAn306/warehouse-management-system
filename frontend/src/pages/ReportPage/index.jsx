@@ -522,7 +522,7 @@ const ReportPage = () => {
               // Scroll rộng hơn để chứa đủ cột Giá trị
               scroll={{ x: screens.md ? 1200 : 900 }}
               size="small"
-             summary={(pageData) => {
+              summary={(pageData) => {
                 let totalNhap = 0;
                 let totalXuat = 0;
                 let totalGiaTri = 0;
@@ -541,21 +541,40 @@ const ReportPage = () => {
                       - Tablet (sm): Gộp 2 cột (Tên, ĐVT) vì cột Mã bị ẩn.
                       - Mobile: Gộp 1 cột (Tên) vì Mã, ĐVT bị ẩn.
                     */}
-                    <Table.Summary.Cell index={0} colSpan={screens.md ? 3 : (screens.sm ? 2 : 1)}>
+                    <Table.Summary.Cell
+                      index={0}
+                      colSpan={screens.md ? 3 : screens.sm ? 2 : 1}
+                    >
                       Tổng
                     </Table.Summary.Cell>
-
                     {/* 2. Ô trống cho cột "Đầu":
                       - Cột này chỉ hiện khi screens.sm = true.
                       - Nên ta cũng cần render 1 ô trống tương ứng để đẩy các số liệu sau về đúng chỗ.
                     */}
-                    {screens.sm && <Table.Summary.Cell index={1}></Table.Summary.Cell>}
-                    
+                    {screens.sm && (
+                      <Table.Summary.Cell index={1}></Table.Summary.Cell>
+                    )}
                     {/* 3. Các ô số liệu (Nhập, Xuất, Cuối, Giá trị) */}
-                    <Table.Summary.Cell index={2} align="center">{totalNhap}</Table.Summary.Cell>
-                    <Table.Summary.Cell index={3} align="center">{totalXuat}</Table.Summary.Cell>
-                    <Table.Summary.Cell index={4}></Table.Summary.Cell> {/* Ô trống cho Tồn Cuối */}
-                    <Table.Summary.Cell index={5} align="right">{totalGiaTri.toLocaleString()}</Table.Summary.Cell>
+                    <Table.Summary.Cell
+                      index={2}
+                      align="center"
+                    >
+                      {totalNhap}
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell
+                      index={3}
+                      align="center"
+                    >
+                      {totalXuat}
+                    </Table.Summary.Cell>
+                    <Table.Summary.Cell index={4}></Table.Summary.Cell>{" "}
+                    {/* Ô trống cho Tồn Cuối */}
+                    <Table.Summary.Cell
+                      index={5}
+                      align="right"
+                    >
+                      {totalGiaTri.toLocaleString()}
+                    </Table.Summary.Cell>
                   </Table.Summary.Row>
                 );
               }}

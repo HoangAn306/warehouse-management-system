@@ -18,6 +18,7 @@ import {
   Image,
   Card,
   Tooltip,
+  Grid, // Import Grid
 } from "antd";
 import {
   PlusOutlined,
@@ -31,7 +32,6 @@ import {
   ArrowLeftOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
-// [QUAN TRỌNG] Import đúng service của bạn
 import * as productService from "../../services/product.service";
 import * as supplierService from "../../services/supplier.service";
 import * as categoryService from "../../services/category.service";
@@ -44,6 +44,10 @@ const PERM_EDIT = 51;
 const PERM_DELETE = 52;
 
 const ProductPage = () => {
+  // Hook kiểm tra màn hình
+  // screens.lg = true chỉ khi màn hình rộng >= 992px (Laptop/PC)
+  const screens = Grid.useBreakpoint();
+
   const [products, setProducts] = useState([]);
   const [listNCC, setListNCC] = useState([]);
   const [listLoaiHang, setListLoaiHang] = useState([]);
@@ -77,8 +81,6 @@ const ProductPage = () => {
     setLoading(true);
     try {
       let response;
-
-      // [FIX] Phân luồng gọi API dựa trên chế độ
       if (inTrashMode) {
         response = await productService.getTrashProducts();
       } else {
@@ -86,7 +88,6 @@ const ProductPage = () => {
       }
 
       let data = response.data ? response.data : response;
-
       if (data && data.content) {
         data = data.content;
       }
@@ -160,8 +161,7 @@ const ProductPage = () => {
       }
     }
     fetchCommonData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchCommonData]);
 
   useEffect(() => {
     fetchProducts();
@@ -250,46 +250,45 @@ const ProductPage = () => {
   const handleUploadChange = ({ fileList: newFileList }) =>
     setFileList(newFileList);
 
-  // --- CỘT BẢNG (ĐÃ CẬP NHẬT THEO DB) ---
+  // --- [FIX] CẤU HÌNH CỘT ---
+  // Thay đổi: Sử dụng screens.lg (PC lớn) thay vì screens.md (Tablet)
+  // để đảm bảo iPhone 11 ngang (896px) vẫn được tính là mobile (không ghim cột).
   const columns = [
     {
       title: "Ảnh",
       dataIndex: "hinhAnh",
       width: 80,
       align: "center",
+      // Chỉ ghim trên màn hình lớn (PC)
+      fixed: screens.lg ? 'left' : null, 
       render: (src) =>
         src ? (
-          <Image
-            src={src}
-            width={50}
-          />
+          <Image src={src} width={50} height={50} style={{ objectFit: 'cover' }} />
         ) : (
-          <div
-            style={{
-              width: 50,
-              height: 50,
-              background: "#f0f0f0",
-              margin: "auto",
-            }}
-          >
-            No IMG
-          </div>
+          <div style={{ width: 50, height: 50, background: "#f0f0f0", margin: "auto", display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No</div>
         ),
     },
-    { title: "Tên Sản Phẩm", dataIndex: "tenSP", render: (t) => <b>{t}</b> },
+    { 
+      title: "Tên Sản Phẩm", 
+      dataIndex: "tenSP", 
+      width: 180, 
+      // Chỉ ghim trên màn hình lớn (PC)
+      fixed: screens.lg ? 'left' : null,
+      render: (t) => <b>{t}</b> 
+    },
     {
       title: "Loại Hàng",
       dataIndex: "maLoai",
+      width: 120,
       render: (id) => listLoaiHang.find((l) => l.maLoai === id)?.tenLoai || id,
     },
    {
       title: "Nhà Cung Cấp",
       key: "ncc",
       width: 250,
+      // Luôn hiện, user vuốt ngang để xem
       render: (_, record) => {
-        // API trả về "danhSachNCC": [{ maNCC: 1, tenNCC: "..." }, ...]
         const listNCC = record.danhSachNCC;
-
         if (Array.isArray(listNCC) && listNCC.length > 0) {
           return listNCC.map((ncc) => (
             <Tag key={ncc.maNCC} color="blue" style={{ marginBottom: 4 }}>
@@ -297,7 +296,6 @@ const ProductPage = () => {
             </Tag>
           ));
         }
-
         return <span style={{ color: "#ccc" }}>---</span>;
       },
     },
@@ -308,28 +306,32 @@ const ProductPage = () => {
       align: "center",
     },
     {
-      title: "Giá Nhập", // Đổi từ Giá Bán sang Giá Nhập
+      title: "Giá Nhập",
       dataIndex: "giaNhap",
       align: "right",
-      render: (v) => Number(v).toLocaleString() + " đ",
+      width: 120,
+      render: (v) => <span style={{ fontWeight: 500 }}>{Number(v).toLocaleString()} đ</span>,
     },
     {
       title: "Tồn Kho",
       dataIndex: "soLuongTon",
       align: "center",
+      width: 90,
       render: (v) => <Tag color={v > 10 ? "blue" : "red"}>{v}</Tag>,
     },
     {
       title: "Hành động",
       key: "action",
-      width: 150,
+      width: 120,
       align: "center",
+      // Chỉ ghim trên màn hình lớn (PC)
+      fixed: screens.lg ? 'right' : null,
       render: (_, record) => {
         const allowEdit = checkPerm(PERM_EDIT);
         const allowDelete = checkPerm(PERM_DELETE);
 
         return (
-          <Space size="middle">
+          <Space size="small">
             {inTrashMode ? (
               allowDelete && (
                 <Tooltip title="Khôi phục">
@@ -337,30 +339,27 @@ const ProductPage = () => {
                     icon={<UndoOutlined />}
                     type="primary"
                     ghost
+                    size="small"
                     onClick={() => handleRestore(record.maSP)}
-                  >
-                    Khôi phục
-                  </Button>
+                  />
                 </Tooltip>
               )
             ) : (
               <>
                 {allowEdit && (
-                  <Tooltip title="Cập nhật">
-                    <Button
-                      icon={<EditOutlined />}
-                      onClick={() => handleEdit(record)}
-                    />
-                  </Tooltip>
+                  <Button
+                    icon={<EditOutlined />}
+                    size="small"
+                    onClick={() => handleEdit(record)}
+                  />
                 )}
                 {allowDelete && (
-                  <Tooltip title="Xóa">
-                    <Button
-                      icon={<DeleteOutlined />}
-                      danger
-                      onClick={() => handleDelete(record.maSP)}
-                    />
-                  </Tooltip>
+                  <Button
+                    icon={<DeleteOutlined />}
+                    danger
+                    size="small"
+                    onClick={() => handleDelete(record.maSP)}
+                  />
                 )}
               </>
             )}
@@ -371,7 +370,7 @@ const ProductPage = () => {
   ];
 
   return (
-    <div>
+    <div style={{ padding: '0 10px' }}>
       {contextHolder}
       <Card
         style={{ marginBottom: 16 }}
@@ -381,7 +380,7 @@ const ProductPage = () => {
           gutter={[16, 16]}
           align="middle"
         >
-          <Col span={6}>
+          <Col xs={24} md={6}>
             <Input
               placeholder="Tên sản phẩm..."
               prefix={<SearchOutlined />}
@@ -389,7 +388,7 @@ const ProductPage = () => {
               onChange={(e) => setFilter({ ...filter, tenSP: e.target.value })}
             />
           </Col>
-          <Col span={4}>
+          <Col xs={12} md={4}>
             <Select
               placeholder="Loại hàng"
               style={{ width: "100%" }}
@@ -407,7 +406,7 @@ const ProductPage = () => {
               ))}
             </Select>
           </Col>
-          <Col span={4}>
+          <Col xs={12} md={4}>
             <Select
               placeholder="Nhà cung cấp"
               style={{ width: "100%" }}
@@ -426,8 +425,8 @@ const ProductPage = () => {
             </Select>
           </Col>
           <Col
-            span={10}
-            style={{ textAlign: "right" }}
+            xs={24} md={10}
+            style={{ textAlign: screens.md ? "right" : "left" }}
           >
             <Space>
               <Button
@@ -436,7 +435,7 @@ const ProductPage = () => {
                   setFilter({ tenSP: "", maLoai: null, maNCC: null })
                 }
               >
-                Xóa lọc
+                Xóa
               </Button>
               <Button
                 icon={<ReloadOutlined />}
@@ -454,6 +453,8 @@ const ProductPage = () => {
           marginBottom: 16,
           display: "flex",
           justifyContent: "space-between",
+          flexWrap: "wrap",
+          gap: "10px",
         }}
       >
         <Space>
@@ -463,7 +464,7 @@ const ProductPage = () => {
               icon={<PlusOutlined />}
               onClick={handleOpenModal}
             >
-              Thêm Sản Phẩm
+              Thêm SP
             </Button>
           )}
         </Space>
@@ -474,7 +475,7 @@ const ProductPage = () => {
               icon={<ArrowLeftOutlined />}
               onClick={() => setInTrashMode(false)}
             >
-              Quay lại danh sách
+              Quay lại
             </Button>
           ) : (
             (isAdmin || checkPerm(PERM_DELETE)) && (
@@ -498,24 +499,26 @@ const ProductPage = () => {
         dataSource={products}
         loading={loading}
         rowKey="maSP"
-        pagination={{ pageSize: 5 }}
+        pagination={{ pageSize: 5, size: 'small' }}
+        scroll={{ x: 1200 }}
+        size="small"
       />
 
-      {/* --- MODAL FORM (ĐÃ SỬA THEO DB) --- */}
       <Modal
         title={editingProduct ? "Cập nhật sản phẩm" : "Thêm sản phẩm mới"}
         open={isModalVisible}
         onOk={handleOk}
         onCancel={() => setIsModalVisible(false)}
-        width={800}
+        width={screens.md ? 800 : "100%"}
+        style={{ top: 20 }}
       >
         <Form
           form={form}
           layout="vertical"
         >
-          {/* Hàng 1: Tên & Loại */}
+          {/* Hàng 1 */}
           <Row gutter={16}>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 name="tenSP"
                 label="Tên Sản Phẩm"
@@ -524,7 +527,7 @@ const ProductPage = () => {
                 <Input />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 name="maLoai"
                 label="Loại Hàng"
@@ -544,9 +547,9 @@ const ProductPage = () => {
             </Col>
           </Row>
 
-          {/* Hàng 2: ĐVT & Giá Nhập */}
+          {/* Hàng 2 */}
           <Row gutter={16}>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 name="donViTinh"
                 label="Đơn vị tính"
@@ -555,7 +558,7 @@ const ProductPage = () => {
                 <Input placeholder="Ví dụ: Cái, Hộp, Kg..." />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 name="giaNhap"
                 label="Giá nhập ban đầu"
@@ -574,9 +577,9 @@ const ProductPage = () => {
             </Col>
           </Row>
 
-          {/* Hàng 3: Tồn Min & Max */}
+          {/* Hàng 3 */}
           <Row gutter={16}>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 name="mucTonToiThieu"
                 label="Mức tồn tối thiểu"
@@ -588,7 +591,7 @@ const ProductPage = () => {
                 />
               </Form.Item>
             </Col>
-            <Col span={12}>
+            <Col xs={24} md={12}>
               <Form.Item
                 name="mucTonToiDa"
                 label="Mức tồn tối đa"
@@ -602,7 +605,7 @@ const ProductPage = () => {
             </Col>
           </Row>
 
-          {/* Hàng 4: Nhà Cung Cấp */}
+          {/* Hàng 4 */}
           <Form.Item
             name="danhSachMaNCC"
             label="Chọn Nhà Cung Cấp"
@@ -624,7 +627,7 @@ const ProductPage = () => {
             </Select>
           </Form.Item>
 
-          {/* Hàng 5: Hình Ảnh */}
+          {/* Hàng 5 */}
           <Form.Item label="Hình ảnh sản phẩm">
             <Upload
               listType="picture"
