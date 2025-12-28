@@ -92,7 +92,8 @@ public class PhieuNhapService {
             chiTiet.setSoLuong(ctRequest.getSoLuong());
             chiTiet.setDonGia(ctRequest.getDonGia());
             chiTiet.setThanhTien(ctRequest.getDonGia().multiply(new BigDecimal(ctRequest.getSoLuong())));
-
+            chiTiet.setSoLo(ctRequest.getSoLo());
+            chiTiet.setNgayHetHan(ctRequest.getNgayHetHan());
             chiTietPhieuNhapRepository.save(chiTiet);
         }
 
