@@ -43,14 +43,16 @@ public class JdbcChiTietPhieuNhapRepository implements ChiTietPhieuNhapRepositor
     @Override
     public int save(ChiTietPhieuNhap chiTiet) {
         // Bảng này dùng Khóa Chính Tổng Hợp, không có ID tự động tăng
-        String sql = "INSERT INTO chitietphieunhap (MaPhieuNhap, MaSP, SoLuong, DonGia, ThanhTien) " +
-                "VALUES (?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO chitietphieunhap (MaPhieuNhap, MaSP, SoLuong, DonGia, ThanhTien,SoLo, NgayHetHan) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?)";
         return jdbcTemplate.update(sql,
                 chiTiet.getMaPhieuNhap(),
                 chiTiet.getMaSP(),
                 chiTiet.getSoLuong(),
                 chiTiet.getDonGia(),
-                chiTiet.getThanhTien()
+                chiTiet.getThanhTien(),
+                (chiTiet.getSoLo() == null || chiTiet.getSoLo().isEmpty()) ? "LO-DEFAULT" : chiTiet.getSoLo(),
+                chiTiet.getNgayHetHan()
         );
     }
 

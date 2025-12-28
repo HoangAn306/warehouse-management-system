@@ -33,8 +33,8 @@ public class JdbcChiTietPhieuXuatRepository implements ChiTietPhieuXuatRepositor
 
     @Override
     public int save(ChiTietPhieuXuat ct) {
-        String sql = "INSERT INTO chitietphieuxuat (MaPhieuXuat, MaSP, SoLuong, DonGia, ThanhTien) VALUES (?, ?, ?, ?, ?)";
-        return jdbcTemplate.update(sql, ct.getMaPhieuXuat(), ct.getMaSP(), ct.getSoLuong(), ct.getDonGia(), ct.getThanhTien());
+        String sql = "INSERT INTO chitietphieuxuat (MaPhieuXuat, MaSP, SoLuong, DonGia, ThanhTien,SoLo) VALUES (?, ?, ?, ?, ?,?)";
+        return jdbcTemplate.update(sql, ct.getMaPhieuXuat(), ct.getMaSP(), ct.getSoLuong(), ct.getDonGia(), ct.getThanhTien(),ct.getSoLo());
     }
 
     @Override
