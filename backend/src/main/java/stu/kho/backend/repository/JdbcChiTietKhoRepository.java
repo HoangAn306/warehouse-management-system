@@ -8,6 +8,7 @@ import stu.kho.backend.dto.SanPhamTrongKhoResponse;
 import stu.kho.backend.entity.ChiTietKho;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Repository
@@ -91,5 +92,19 @@ public class JdbcChiTietKhoRepository implements ChiTietKhoRepository {
         } catch (EmptyResultDataAccessException e) {
             return Optional.empty();
         }
+    }
+    public List<Map<String, Object>> findBatchesForAutoPick(Integer maKho, Integer maSP) {
+        String sql = """
+        SELECT SoLo, SoLuongTon, NgayHetHan 
+        FROM chitietkho 
+        WHERE MaKho = ? AND MaSP = ? 
+          AND SoLuongTon > 0 
+          AND (NgayHetHan IS NULL OR NgayHetHan >= CURDATE()) -- Chỉ lấy lô chưa hết hạn
+        ORDER BY 
+          CASE WHEN NgayHetHan IS NULL THEN 1 ELSE 0 END, -- Ưu tiên lô có hạn sử dụng trước
+          NgayHetHan ASC, -- Hết hạn sớm nhất thì xuất trước (FEFO)
+          SoLuongTon ASC  -- (Tùy chọn) Ưu tiên lô ít hàng để dọn kho
+    """;
+        return jdbcTemplate.queryForList(sql, maKho, maSP);
     }
 }

@@ -4,6 +4,7 @@ import stu.kho.backend.dto.SanPhamTrongKhoResponse;
 import stu.kho.backend.entity.ChiTietKho;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public interface ChiTietKhoRepository {
@@ -19,5 +20,6 @@ public interface ChiTietKhoRepository {
     //Tim san pham theo ma kho
     List<SanPhamTrongKhoResponse> findSanPhamByMaKho(Integer maKho);
     Optional<ChiTietKho> findByIdForUpdate(Integer maSP, Integer maKho);
+    List<Map<String, Object>> findBatchesForAutoPick(Integer maKho, Integer maSP);
 
     }
