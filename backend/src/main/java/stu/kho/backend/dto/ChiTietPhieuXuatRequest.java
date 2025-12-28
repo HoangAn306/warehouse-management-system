@@ -8,4 +8,6 @@ public class ChiTietPhieuXuatRequest {
     private Integer maSP;
     private Integer soLuong;
     private BigDecimal donGia;
+    private String soLo;
+
 }

@@ -1,5 +1,7 @@
 package stu.kho.backend.service;
 
+import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,9 +12,10 @@ import stu.kho.backend.entity.*;
 import stu.kho.backend.repository.*;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
 
 @Service
 public class PhieuXuatService {
@@ -28,6 +31,7 @@ public class PhieuXuatService {
     private final NguoiDungRepository nguoiDungRepository;
     private final SanPhamRepository sanPhamRepository;
     private final KhachHangRepository khachHangRepository;
+    private final JdbcTemplate jdbcTemplate; // [MỚI] Dùng để check Lô và Hạn
 
 
     public PhieuXuatService(PhieuXuatRepository phieuXuatRepository,
@@ -35,7 +39,9 @@ public class PhieuXuatService {
                             ChiTietKhoRepository chiTietKhoRepository,
                             HoatDongRepository hoatDongRepository,
                             NguoiDungRepository nguoiDungRepository,
-                            SanPhamRepository sanPhamRepository, KhachHangRepository khachHangRepository) {
+                            SanPhamRepository sanPhamRepository,
+                            KhachHangRepository khachHangRepository,
+                            JdbcTemplate jdbcTemplate) {
         this.phieuXuatRepository = phieuXuatRepository;
         this.chiTietPhieuXuatRepository = chiTietPhieuXuatRepository;
         this.chiTietKhoRepository = chiTietKhoRepository;
@@ -43,6 +49,7 @@ public class PhieuXuatService {
         this.nguoiDungRepository = nguoiDungRepository;
         this.sanPhamRepository = sanPhamRepository;
         this.khachHangRepository = khachHangRepository;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     // =================================================================
@@ -53,9 +60,9 @@ public class PhieuXuatService {
         NguoiDung nguoiLap = nguoiDungRepository.findByTenDangNhap(tenNguoiLap)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng."));
 
-        // 1. Kiểm tra xem kho có đủ hàng để xuất không (Kiểm tra trước)
+        // 1. Kiểm tra sơ bộ tồn kho (Check xem lô đó có đủ hàng không)
         for (ChiTietPhieuXuatRequest item : request.getChiTiet()) {
-            checkTonKhoDu(request.getMaKho(), item.getMaSP(), item.getSoLuong());
+            checkTonKhoLoHang(request.getMaKho(), item.getMaSP(), item.getSoLo(), item.getSoLuong());
         }
 
         // 2. Tính tổng tiền
@@ -63,7 +70,7 @@ public class PhieuXuatService {
                 .map(ct -> ct.getDonGia().multiply(new BigDecimal(ct.getSoLuong())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // 3. Lưu Phiếu Chính (Trạng thái = 1)
+        // 3. Lưu Phiếu Chính
         PhieuXuatHang phieuXuat = new PhieuXuatHang();
         phieuXuat.setTrangThai(STATUS_CHO_DUYET);
         phieuXuat.setMaKH(request.getMaKH());
@@ -76,7 +83,7 @@ public class PhieuXuatService {
         Integer maPhieuXuatMoi = phieuXuatRepository.save(phieuXuat);
         phieuXuat.setMaPhieuXuat(maPhieuXuatMoi);
 
-        // 4. Lưu Chi Tiết
+        // 4. Lưu Chi Tiết (KÈM SỐ LÔ)
         for (ChiTietPhieuXuatRequest ctRequest : request.getChiTiet()) {
             ChiTietPhieuXuat chiTiet = new ChiTietPhieuXuat();
             chiTiet.setMaPhieuXuat(maPhieuXuatMoi);
@@ -84,6 +91,10 @@ public class PhieuXuatService {
             chiTiet.setSoLuong(ctRequest.getSoLuong());
             chiTiet.setDonGia(ctRequest.getDonGia());
             chiTiet.setThanhTien(ctRequest.getDonGia().multiply(new BigDecimal(ctRequest.getSoLuong())));
+
+            // [MỚI] Lưu số lô
+            chiTiet.setSoLo(ctRequest.getSoLo());
+            // Lưu ý: Ngày hết hạn lấy từ kho khi xuất, hoặc frontend gửi lên nếu cần lưu lịch sử
 
             chiTietPhieuXuatRepository.save(chiTiet);
         }
@@ -93,7 +104,7 @@ public class PhieuXuatService {
     }
 
     // =================================================================
-    // 2. APPROVE (Duyệt - TRỪ TỒN KHO)
+    // 2. APPROVE (Duyệt - TRỪ TỒN KHO & CHECK HẠN SỬ DỤNG)
     // =================================================================
     @Transactional
     public PhieuXuatHang approvePhieuXuat(Integer id, String tenNguoiDuyet) {
@@ -106,10 +117,38 @@ public class PhieuXuatService {
             throw new RuntimeException("Chỉ duyệt được phiếu đang chờ.");
         }
 
-        // 1. Trừ Tồn Kho
+        LocalDate homNay = LocalDate.now();
+
+        // [QUAN TRỌNG] Duyệt từng dòng chi tiết
         for (ChiTietPhieuXuat ct : phieuXuat.getChiTiet()) {
-            // Số lượng ÂM (-) để trừ đi
-            capNhatTonKho(phieuXuat.getMaKho(), ct.getMaSP(), -ct.getSoLuong());
+            // Kiểm tra kỹ lại tồn kho và hạn sử dụng trước khi trừ
+            String sqlCheck = "SELECT SoLuongTon, NgayHetHan FROM chitietkho WHERE MaKho = ? AND MaSP = ? AND SoLo = ?";
+
+            try {
+                Map<String, Object> info = jdbcTemplate.queryForMap(sqlCheck,
+                        phieuXuat.getMaKho(), ct.getMaSP(), ct.getSoLo());
+
+                int tonHienTai = (Integer) info.get("SoLuongTon");
+                java.sql.Date sqlDate = (java.sql.Date) info.get("NgayHetHan");
+                LocalDate ngayHetHan = (sqlDate != null) ? sqlDate.toLocalDate() : null;
+
+                // Check 1: Đủ hàng không?
+                if (tonHienTai < ct.getSoLuong()) {
+                    throw new RuntimeException("Sản phẩm " + ct.getMaSP() + " lô " + ct.getSoLo() + " không đủ hàng để xuất.");
+                }
+
+                // Check 2: Hết hạn chưa?
+                if (ngayHetHan != null && ngayHetHan.isBefore(homNay)) {
+                    throw new RuntimeException("CHẶN XUẤT: Lô hàng " + ct.getSoLo() + " của SP " + ct.getMaSP() +
+                            " đã hết hạn ngày " + ngayHetHan + ".");
+                }
+
+            } catch (EmptyResultDataAccessException e) {
+                throw new RuntimeException("Không tìm thấy lô hàng " + ct.getSoLo() + " trong kho này.");
+            }
+
+            // Nếu qua được các bước trên -> Trừ kho
+            capNhatTonKhoTheoLo(phieuXuat.getMaKho(), ct.getMaSP(), ct.getSoLo(), -ct.getSoLuong());
         }
 
         // 2. Cập nhật trạng thái
@@ -122,7 +161,7 @@ public class PhieuXuatService {
     }
 
     // =================================================================
-    // 3. CANCEL (Hủy - KHÔNG HOÀN TRẢ TỒN KHO)
+    // 3. CANCEL (Hủy)
     // =================================================================
     @Transactional
     public PhieuXuatHang cancelPhieuXuat(Integer id, String tenNguoiHuy) {
@@ -131,79 +170,22 @@ public class PhieuXuatService {
 
         PhieuXuatHang phieuXuat = getPhieuXuatById(id);
 
-        // Kiểm tra trạng thái hiện tại
         if (phieuXuat.getTrangThai() == STATUS_DA_HUY) {
             throw new RuntimeException("Phiếu này đã bị hủy trước đó.");
         }
 
-        // --- LOGIC MỚI: CHẶN HỦY NẾU ĐÃ DUYỆT ---
         if (phieuXuat.getTrangThai() == STATUS_DA_DUYET) {
-            throw new RuntimeException("Không thể hủy phiếu đã được duyệt (Hàng đã xuất). Vui lòng tạo phiếu nhập hàng nếu cần điều chỉnh.");
+            throw new RuntimeException("Không thể hủy phiếu đã duyệt (Hàng đã xuất).");
         }
-        // ----------------------------------------
 
-        // Nếu phiếu đang CHỜ DUYỆT (1) -> Cho phép hủy
         phieuXuat.setTrangThai(STATUS_DA_HUY);
-        phieuXuat.setNguoiDuyet(nguoiHuy.getMaNguoiDung()); // Ghi nhận người thực hiện hủy
-
+        phieuXuat.setNguoiDuyet(nguoiHuy.getMaNguoiDung());
         phieuXuatRepository.update(phieuXuat);
 
         logActivity(nguoiHuy.getMaNguoiDung(), "Hủy Phiếu Xuất #" + id);
         return phieuXuat;
     }
 
-    public PhieuXuatHang getPhieuXuatById(Integer id) {
-        PhieuXuatHang pxh = phieuXuatRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phiếu xuất " + id));
-        pxh.setChiTiet(chiTietPhieuXuatRepository.findByMaPhieuXuat(id));
-        return pxh;
-    }
-
-    public List<PhieuXuatHang> getAllPhieuXuat() {
-        return phieuXuatRepository.findAll();
-    }
-
-    // =================================================================
-    // HÀM TIỆN ÍCH (CẬP NHẬT ĐỒNG BỘ)
-    // =================================================================
-
-    private void checkTonKhoDu(Integer maKho, Integer maSP, Integer soLuongCan) {
-        Optional<ChiTietKho> tonKhoOpt = chiTietKhoRepository.findById(maSP, maKho);
-        if (tonKhoOpt.isEmpty() || tonKhoOpt.get().getSoLuongTon() < soLuongCan) {
-            throw new RuntimeException("Sản phẩm SP#" + maSP + " không đủ hàng trong kho #" + maKho + " để xuất.");
-        }
-    }
-
-    private void capNhatTonKho(Integer maKho, Integer maSP, Integer soLuongThayDoi) {
-        // 1. Cập nhật ChiTietKho (Tồn kho chi tiết)
-        Optional<ChiTietKho> tonKhoOpt = chiTietKhoRepository.findByIdForUpdate(maSP, maKho);
-        if (tonKhoOpt.isPresent()) {
-            ChiTietKho tonKho = tonKhoOpt.get();
-            int moi = tonKho.getSoLuongTon() + soLuongThayDoi;
-
-            if (moi < 0) throw new RuntimeException("Lỗi: Tồn kho bị âm sau khi xuất!");
-
-            chiTietKhoRepository.updateSoLuongTon(maSP, maKho, moi);
-        } else {
-            // Trường hợp xuất mà không có dòng tồn kho (không thể xảy ra nếu đã checkTonKhoDu)
-            if (soLuongThayDoi < 0) throw new RuntimeException("Lỗi dữ liệu: Không tìm thấy bản ghi tồn kho để trừ.");
-        }
-
-        // 2. Cập nhật SanPham (Tổng tồn kho) - ĐỒNG BỘ DỮ LIỆU
-        SanPham sp = sanPhamRepository.findById(maSP).orElseThrow();
-        int tongHienTai = (sp.getSoLuongTon() == null) ? 0 : sp.getSoLuongTon();
-        sp.setSoLuongTon(tongHienTai + soLuongThayDoi);
-
-        sanPhamRepository.update(sp);
-    }
-
-    private void logActivity(Integer maUser, String act) {
-        HoatDong hd = new HoatDong();
-        hd.setMaNguoiDung(maUser);
-        hd.setHanhDong(act);
-        hd.setThoiGianThucHien(java.time.LocalDateTime.now());
-        hoatDongRepository.save(hd);
-    }
     // =================================================================
     // 4. UPDATE (Sửa phiếu xuất)
     // =================================================================
@@ -214,17 +196,17 @@ public class PhieuXuatService {
 
         PhieuXuatHang phieuXuatCu = getPhieuXuatById(maPhieuXuat);
 
-        // --- LOGIC MỚI ---
         if (phieuXuatCu.getTrangThai() == STATUS_DA_HUY) {
             throw new RuntimeException("Không thể sửa phiếu đã hủy.");
         }
-// 2. KIỂM TRA THỜI HẠN (MỚI): Không cho sửa phiếu quá 30 ngày
+
         LocalDateTime limitDate = LocalDateTime.now().minusDays(30);
         if (phieuXuatCu.getNgayLapPhieu().isBefore(limitDate)) {
             throw new RuntimeException("Không thể sửa phiếu đã được tạo quá 30 ngày.");
         }
+
+        // Nếu phiếu ĐÃ DUYỆT -> Cần Rollback kho trước khi sửa
         if (phieuXuatCu.getTrangThai() == STATUS_DA_DUYET) {
-            // Check quyền
             boolean hasPerm = SecurityContextHolder.getContext().getAuthentication().getAuthorities().stream()
                     .anyMatch(a -> a.getAuthority().equals("PERM_PHIEUXUAT_EDIT_APPROVED"));
 
@@ -232,17 +214,16 @@ public class PhieuXuatService {
                 throw new RuntimeException("Bạn không có quyền sửa phiếu xuất đã duyệt.");
             }
 
-            // ROLLBACK KHO (Cộng lại số lượng cũ vào kho)
+            // ROLLBACK: Cộng lại hàng vào đúng Lô cũ
             for (ChiTietPhieuXuat ctCu : phieuXuatCu.getChiTiet()) {
-                capNhatTonKho(phieuXuatCu.getMaKho(), ctCu.getMaSP(), ctCu.getSoLuong());
+                capNhatTonKhoTheoLo(phieuXuatCu.getMaKho(), ctCu.getMaSP(), ctCu.getSoLo(), ctCu.getSoLuong());
             }
         }
-        // -----------------
 
         // Xóa chi tiết cũ
         chiTietPhieuXuatRepository.deleteByMaPhieuXuat(maPhieuXuat);
 
-        // Tính tổng tiền mới & Update phiếu
+        // Update thông tin phiếu
         BigDecimal tongTienMoi = request.getChiTiet().stream()
                 .map(ct -> ct.getDonGia().multiply(new BigDecimal(ct.getSoLuong())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -251,14 +232,11 @@ public class PhieuXuatService {
         phieuXuatCu.setMaKho(request.getMaKho());
         phieuXuatCu.setChungTu(request.getChungTu());
         phieuXuatCu.setTongTien(tongTienMoi);
-
         phieuXuatRepository.update(phieuXuatCu);
 
         // Thêm chi tiết MỚI
         for (ChiTietPhieuXuatRequest ctRequest : request.getChiTiet()) {
-            // Kiểm tra tồn kho (Rất quan trọng với phiếu xuất)
-            // Nếu đang là Đã Duyệt, kho đã được cộng lại ở bước Rollback, giờ check xem có đủ để trừ mới không
-            checkTonKhoDu(request.getMaKho(), ctRequest.getMaSP(), ctRequest.getSoLuong());
+            checkTonKhoLoHang(request.getMaKho(), ctRequest.getMaSP(), ctRequest.getSoLo(), ctRequest.getSoLuong());
 
             ChiTietPhieuXuat chiTietMoi = new ChiTietPhieuXuat();
             chiTietMoi.setMaPhieuXuat(maPhieuXuat);
@@ -266,17 +244,17 @@ public class PhieuXuatService {
             chiTietMoi.setSoLuong(ctRequest.getSoLuong());
             chiTietMoi.setDonGia(ctRequest.getDonGia());
             chiTietMoi.setThanhTien(ctRequest.getDonGia().multiply(new BigDecimal(ctRequest.getSoLuong())));
+            chiTietMoi.setSoLo(ctRequest.getSoLo()); // [MỚI]
+
             chiTietPhieuXuatRepository.save(chiTietMoi);
 
-            // --- LOGIC MỚI: ÁP DỤNG LẠI KHO (Nếu đang là Đã Duyệt) ---
+            // Nếu đang là Đã Duyệt -> Trừ kho theo Lô mới
             if (phieuXuatCu.getTrangThai() == STATUS_DA_DUYET) {
-                // Trừ kho (Số âm)
-                capNhatTonKho(request.getMaKho(), ctRequest.getMaSP(), -ctRequest.getSoLuong());
+                capNhatTonKhoTheoLo(request.getMaKho(), ctRequest.getMaSP(), ctRequest.getSoLo(), -ctRequest.getSoLuong());
             }
-            // --------------------------------------------------------
         }
 
-        logActivity(nguoiSua.getMaNguoiDung(), "Cập nhật Phiếu Xuất Hàng #" + maPhieuXuat + " (Trạng thái: " + phieuXuatCu.getTrangThai() + ")");
+        logActivity(nguoiSua.getMaNguoiDung(), "Cập nhật Phiếu Xuất Hàng #" + maPhieuXuat);
         return getPhieuXuatById(maPhieuXuat);
     }
 
@@ -290,76 +268,107 @@ public class PhieuXuatService {
 
         PhieuXuatHang phieuXuat = getPhieuXuatById(maPhieuXuat);
 
-        // LOGIC: Nếu phiếu ĐÃ DUYỆT -> Phải HOÀN TRẢ TỒN KHO trước khi xóa
+        // Nếu phiếu ĐÃ DUYỆT -> Hoàn trả tồn kho (đúng lô)
         if (phieuXuat.getTrangThai() == STATUS_DA_DUYET) {
             for (ChiTietPhieuXuat ct : phieuXuat.getChiTiet()) {
-                // Số lượng DƯƠNG (+) để cộng lại vào kho
-                capNhatTonKho(phieuXuat.getMaKho(), ct.getMaSP(), ct.getSoLuong());
+                capNhatTonKhoTheoLo(phieuXuat.getMaKho(), ct.getMaSP(), ct.getSoLo(), ct.getSoLuong());
             }
         }
 
-        // 1. Xóa Chi Tiết
         chiTietPhieuXuatRepository.deleteByMaPhieuXuat(maPhieuXuat);
-
-        // 2. Xóa Phiếu Chính
         phieuXuatRepository.deleteById(maPhieuXuat);
 
         logActivity(nguoiXoa.getMaNguoiDung(), "Xóa Phiếu Xuất Hàng #" + maPhieuXuat);
     }
 
+    // =================================================================
+    // HÀM TIỆN ÍCH (HELPER)
+    // =================================================================
+
+    // [MỚI] Kiểm tra tồn kho của 1 lô cụ thể
+    private void checkTonKhoLoHang(Integer maKho, Integer maSP, String soLo, Integer soLuongCan) {
+        String sql = "SELECT SoLuongTon FROM chitietkho WHERE MaKho = ? AND MaSP = ? AND SoLo = ?";
+        try {
+            Integer ton = jdbcTemplate.queryForObject(sql, Integer.class, maKho, maSP, soLo);
+            if (ton == null || ton < soLuongCan) {
+                throw new RuntimeException("Lô hàng " + soLo + " không đủ số lượng để xuất.");
+            }
+        } catch (EmptyResultDataAccessException e) {
+            throw new RuntimeException("Lô hàng " + soLo + " không tồn tại trong kho này.");
+        }
+    }
+
+    // [MỚI] Cập nhật tồn kho theo lô (Batch)
+    private void capNhatTonKhoTheoLo(Integer maKho, Integer maSP, String soLo, Integer soLuongThayDoi) {
+        // 1. Cập nhật bảng ChiTietKho (Theo Lô)
+        String sqlUpdateKho = "UPDATE chitietkho SET SoLuongTon = SoLuongTon + ? WHERE MaKho = ? AND MaSP = ? AND SoLo = ?";
+        int rows = jdbcTemplate.update(sqlUpdateKho, soLuongThayDoi, maKho, maSP, soLo);
+
+        if (rows == 0 && soLuongThayDoi < 0) {
+            throw new RuntimeException("Lỗi nghiêm trọng: Không tìm thấy lô hàng để trừ kho!");
+        }
+
+        // 2. Cập nhật bảng SanPham (Tổng tồn kho toàn hệ thống) - Để đồng bộ
+        SanPham sp = sanPhamRepository.findById(maSP).orElseThrow();
+        int tongHienTai = (sp.getSoLuongTon() == null) ? 0 : sp.getSoLuongTon();
+        sp.setSoLuongTon(tongHienTai + soLuongThayDoi);
+        sanPhamRepository.update(sp);
+    }
+
+    // Các hàm khác giữ nguyên
+    public PhieuXuatHang getPhieuXuatById(Integer id) {
+        PhieuXuatHang pxh = phieuXuatRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy phiếu xuất " + id));
+        pxh.setChiTiet(chiTietPhieuXuatRepository.findByMaPhieuXuat(id));
+        return pxh;
+    }
+
+    public List<PhieuXuatHang> getAllPhieuXuat() {
+        return phieuXuatRepository.findAll();
+    }
+
     public List<PhieuXuatHang> filter(PhieuXuatFilterRequest request) {
         return phieuXuatRepository.filter(request);
     }
+
     @Transactional
     public PhieuXuatHang createPhieuXuatForGiangVien(PhieuXuatRequest request, String username) {
-        // 1. Lấy thông tin Giảng viên (User)
         NguoiDung giangVienUser = nguoiDungRepository.findByTenDangNhap(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
-
-        // 2. Tìm hoặc Tạo Khách Hàng tương ứng với Giảng viên này
-        // (Tìm theo email hoặc tên để tránh trùng lặp)
         Integer maKhachHang = findOrCreateCustomerFromUser(giangVienUser);
-
-        // 3. Gán MaKH vào request và gọi hàm tạo phiếu chuẩn
         request.setMaKH(maKhachHang);
-
-        // Gọi lại hàm create chuẩn
         return createPhieuXuat(request, username);
     }
 
-    // Hàm tiện ích: Tìm hoặc Tạo Khách Hàng từ User
     private Integer findOrCreateCustomerFromUser(NguoiDung user) {
-        // Tìm xem có KH nào trùng email không
         List<KhachHang> existing = khachHangRepository.search(user.getEmail());
-
         if (!existing.isEmpty()) {
             return existing.get(0).getMaKH();
         }
-
-        // Nếu chưa có, tạo KH mới
         KhachHang newCus = new KhachHang();
         newCus.setTenKH(user.getHoTen() + " (GV)");
         newCus.setEmail(user.getEmail());
         newCus.setSdt(user.getSdt());
-        newCus.setDiaChi("Trường học"); // Mặc định hoặc lấy từ user nếu có
-
-        int newId = khachHangRepository.save(newCus);
-        return newId;
+        newCus.setDiaChi("Trường học");
+        return khachHangRepository.save(newCus);
     }
+
     public List<PhieuXuatHang> getAllPhieuXuat(String username) {
         NguoiDung user = nguoiDungRepository.findByTenDangNhap(username)
                 .orElseThrow(() -> new RuntimeException("User not found"));
-
-        // Kiểm tra quyền hạn của user để quyết định dữ liệu trả về
-        // (Cách đơn giản: Dựa vào Vai trò. Ví dụ: Admin(1), Quản lý(4) xem hết)
         int roleId = user.getVaiTro().getMaVaiTro();
-
-        if (roleId == 1 || roleId==2|| roleId==3|| roleId == 4 ) {
-            // Admin hoặc Quản lý -> Xem tất cả
+        if (roleId == 1 || roleId == 2 || roleId == 3 || roleId == 4) {
             return phieuXuatRepository.findAll();
         } else {
-            // Giảng viên (5) -> Chỉ xem phiếu mình tạo
             return phieuXuatRepository.findByNguoiLap(user.getMaNguoiDung());
         }
+    }
+
+    private void logActivity(Integer maUser, String act) {
+        HoatDong hd = new HoatDong();
+        hd.setMaNguoiDung(maUser);
+        hd.setHanhDong(act);
+        hd.setThoiGianThucHien(java.time.LocalDateTime.now());
+        hoatDongRepository.save(hd);
     }
 }

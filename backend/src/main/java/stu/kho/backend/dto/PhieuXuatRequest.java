@@ -10,5 +10,7 @@ public class PhieuXuatRequest {
     private Integer maKho;
     private Integer nguoiDuyet;
     private String chungTu;
+    private String soLo;
+
     private List<ChiTietPhieuXuatRequest> chiTiet;
 }

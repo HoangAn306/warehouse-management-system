@@ -26,5 +26,6 @@ public class ChiTietPhieuXuat {
             "loaiHang",         // (Tùy chọn) Có thể ẩn nếu chỉ cần tên SP
             "maLoai"
     })
+    private String soLo;
     private SanPham sanPham;
 }
