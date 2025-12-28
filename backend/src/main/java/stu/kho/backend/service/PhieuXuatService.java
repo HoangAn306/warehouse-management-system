@@ -14,6 +14,7 @@ import stu.kho.backend.repository.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -31,7 +32,7 @@ public class PhieuXuatService {
     private final NguoiDungRepository nguoiDungRepository;
     private final SanPhamRepository sanPhamRepository;
     private final KhachHangRepository khachHangRepository;
-    private final JdbcTemplate jdbcTemplate; // [MỚI] Dùng để check Lô và Hạn
+    private final JdbcTemplate jdbcTemplate;
 
 
     public PhieuXuatService(PhieuXuatRepository phieuXuatRepository,
@@ -53,16 +54,19 @@ public class PhieuXuatService {
     }
 
     // =================================================================
-    // 1. CREATE (Tạo phiếu - CHƯA TRỪ KHO)
+    // 1. CREATE (Tạo phiếu - SỬA LỖI CHECK NULL)
     // =================================================================
     @Transactional
     public PhieuXuatHang createPhieuXuat(PhieuXuatRequest request, String tenNguoiLap) {
         NguoiDung nguoiLap = nguoiDungRepository.findByTenDangNhap(tenNguoiLap)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng."));
 
-        // 1. Kiểm tra sơ bộ tồn kho (Check xem lô đó có đủ hàng không)
+        // 1. Kiểm tra sơ bộ tồn kho
+        // [FIX]: Chỉ kiểm tra nếu người dùng CÓ nhập số lô. Nếu để null (FEFO) thì bỏ qua.
         for (ChiTietPhieuXuatRequest item : request.getChiTiet()) {
-            checkTonKhoLoHang(request.getMaKho(), item.getMaSP(), item.getSoLo(), item.getSoLuong());
+            if (item.getSoLo() != null && !item.getSoLo().isEmpty()) {
+                checkTonKhoLoHang(request.getMaKho(), item.getMaSP(), item.getSoLo(), item.getSoLuong());
+            }
         }
 
         // 2. Tính tổng tiền
@@ -83,7 +87,7 @@ public class PhieuXuatService {
         Integer maPhieuXuatMoi = phieuXuatRepository.save(phieuXuat);
         phieuXuat.setMaPhieuXuat(maPhieuXuatMoi);
 
-        // 4. Lưu Chi Tiết (KÈM SỐ LÔ)
+        // 4. Lưu Chi Tiết
         for (ChiTietPhieuXuatRequest ctRequest : request.getChiTiet()) {
             ChiTietPhieuXuat chiTiet = new ChiTietPhieuXuat();
             chiTiet.setMaPhieuXuat(maPhieuXuatMoi);
@@ -92,19 +96,18 @@ public class PhieuXuatService {
             chiTiet.setDonGia(ctRequest.getDonGia());
             chiTiet.setThanhTien(ctRequest.getDonGia().multiply(new BigDecimal(ctRequest.getSoLuong())));
 
-            // [MỚI] Lưu số lô
+            // Lưu ý: Nếu soLo là null, vẫn lưu null vào DB (để lúc duyệt sẽ tự tìm lô)
             chiTiet.setSoLo(ctRequest.getSoLo());
-            // Lưu ý: Ngày hết hạn lấy từ kho khi xuất, hoặc frontend gửi lên nếu cần lưu lịch sử
 
             chiTietPhieuXuatRepository.save(chiTiet);
         }
 
         logActivity(nguoiLap.getMaNguoiDung(), "Tạo Phiếu Xuất Hàng #" + maPhieuXuatMoi);
-        return phieuXuat;
+        return getPhieuXuatById(maPhieuXuatMoi);
     }
 
     // =================================================================
-    // 2. APPROVE (Duyệt - TRỪ TỒN KHO & AUTO PICK FEFO)
+    // 2. APPROVE (Duyệt - CÓ LOGIC FEFO)
     // =================================================================
     @Transactional
     public PhieuXuatHang approvePhieuXuat(Integer id, String tenNguoiDuyet) {
@@ -120,11 +123,10 @@ public class PhieuXuatService {
 
         LocalDate homNay = LocalDate.now();
 
-        // Danh sách chi tiết ban đầu (có thể chứa dòng không có số lô)
+        // Danh sách chi tiết ban đầu
         List<ChiTietPhieuXuat> listChiTietCu = phieuXuat.getChiTiet();
 
         // 2. DUYỆT TỪNG DÒNG CHI TIẾT
-        // Lưu ý: Ta không dùng for-each trực tiếp để sửa DB vì sẽ làm thay đổi cấu trúc dữ liệu
         for (ChiTietPhieuXuat ct : listChiTietCu) {
 
             // === TRƯỜNG HỢP A: NGƯỜI DÙNG ĐÃ CHỌN SỐ LÔ ===
@@ -132,13 +134,12 @@ public class PhieuXuatService {
                 validateAndDeductSpecificBatch(phieuXuat.getMaKho(), ct, homNay);
             }
 
-            // === TRƯỜNG HỢP B: NGƯỜI DÙNG KHÔNG BIẾT SỐ LÔ (AUTO PICK) ===
+            // === TRƯỜNG HỢP B: NGƯỜI DÙNG KHÔNG BIẾT SỐ LÔ (AUTO PICK FEFO) ===
             else {
-                // Tự động tìm lô và trừ kho
+                // Tự động tìm lô và trừ kho (có thể tách thành nhiều dòng lô khác nhau)
                 autoAllocateBatches(phieuXuat, ct);
 
-                // Xóa dòng cũ (dòng không có số lô) khỏi database
-                // Vì nó đã được thay thế bằng các dòng chi tiết cụ thể trong hàm autoAllocateBatches
+                // Sau khi đã phân bổ xong, xóa dòng yêu cầu chung chung (dòng null) khỏi DB
                 deleteOldGenericItem(ct.getMaPhieuXuat(), ct.getMaSP());
             }
         }
@@ -150,9 +151,10 @@ public class PhieuXuatService {
 
         logActivity(nguoiDuyet.getMaNguoiDung(), "Duyệt Phiếu Xuất #" + id);
 
-        // Return lại phiếu mới nhất (đã cập nhật chi tiết lô)
+        // Return lại phiếu mới nhất (để thấy được các lô đã tự động điền)
         return getPhieuXuatById(id);
     }
+
     // =================================================================
     // 3. CANCEL (Hủy)
     // =================================================================
@@ -209,7 +211,10 @@ public class PhieuXuatService {
 
             // ROLLBACK: Cộng lại hàng vào đúng Lô cũ
             for (ChiTietPhieuXuat ctCu : phieuXuatCu.getChiTiet()) {
-                capNhatTonKhoTheoLo(phieuXuatCu.getMaKho(), ctCu.getMaSP(), ctCu.getSoLo(), ctCu.getSoLuong());
+                // Nếu ctCu.getSoLo() là null (lỗi dữ liệu cũ) thì bỏ qua hoặc gán mặc định
+                if(ctCu.getSoLo() != null) {
+                    capNhatTonKhoTheoLo(phieuXuatCu.getMaKho(), ctCu.getMaSP(), ctCu.getSoLo(), ctCu.getSoLuong());
+                }
             }
         }
 
@@ -229,7 +234,10 @@ public class PhieuXuatService {
 
         // Thêm chi tiết MỚI
         for (ChiTietPhieuXuatRequest ctRequest : request.getChiTiet()) {
-            checkTonKhoLoHang(request.getMaKho(), ctRequest.getMaSP(), ctRequest.getSoLo(), ctRequest.getSoLuong());
+            // [FIX] Chỉ check tồn kho nếu CÓ nhập số lô
+            if (ctRequest.getSoLo() != null && !ctRequest.getSoLo().isEmpty()) {
+                checkTonKhoLoHang(request.getMaKho(), ctRequest.getMaSP(), ctRequest.getSoLo(), ctRequest.getSoLuong());
+            }
 
             ChiTietPhieuXuat chiTietMoi = new ChiTietPhieuXuat();
             chiTietMoi.setMaPhieuXuat(maPhieuXuat);
@@ -237,13 +245,19 @@ public class PhieuXuatService {
             chiTietMoi.setSoLuong(ctRequest.getSoLuong());
             chiTietMoi.setDonGia(ctRequest.getDonGia());
             chiTietMoi.setThanhTien(ctRequest.getDonGia().multiply(new BigDecimal(ctRequest.getSoLuong())));
-            chiTietMoi.setSoLo(ctRequest.getSoLo()); // [MỚI]
+            chiTietMoi.setSoLo(ctRequest.getSoLo());
 
             chiTietPhieuXuatRepository.save(chiTietMoi);
 
             // Nếu đang là Đã Duyệt -> Trừ kho theo Lô mới
+            // (Lưu ý: Nếu soLo là null ở đây thì logic này sẽ lỗi, nên với phiếu Đã Duyệt bắt buộc phải chọn lô
+            // hoặc phải chạy lại logic FEFO. Để đơn giản, khi sửa phiếu Đã Duyệt thì bắt buộc chọn lô)
             if (phieuXuatCu.getTrangThai() == STATUS_DA_DUYET) {
-                capNhatTonKhoTheoLo(request.getMaKho(), ctRequest.getMaSP(), ctRequest.getSoLo(), -ctRequest.getSoLuong());
+                if (ctRequest.getSoLo() != null) {
+                    capNhatTonKhoTheoLo(request.getMaKho(), ctRequest.getMaSP(), ctRequest.getSoLo(), -ctRequest.getSoLuong());
+                } else {
+                    throw new RuntimeException("Khi sửa phiếu ĐÃ DUYỆT, bạn phải chọn Số Lô cụ thể.");
+                }
             }
         }
 
@@ -264,7 +278,9 @@ public class PhieuXuatService {
         // Nếu phiếu ĐÃ DUYỆT -> Hoàn trả tồn kho (đúng lô)
         if (phieuXuat.getTrangThai() == STATUS_DA_DUYET) {
             for (ChiTietPhieuXuat ct : phieuXuat.getChiTiet()) {
-                capNhatTonKhoTheoLo(phieuXuat.getMaKho(), ct.getMaSP(), ct.getSoLo(), ct.getSoLuong());
+                if(ct.getSoLo() != null) {
+                    capNhatTonKhoTheoLo(phieuXuat.getMaKho(), ct.getMaSP(), ct.getSoLo(), ct.getSoLuong());
+                }
             }
         }
 
@@ -275,10 +291,10 @@ public class PhieuXuatService {
     }
 
     // =================================================================
-    // HÀM TIỆN ÍCH (HELPER)
+    // CÁC HÀM HỖ TRỢ & LOGIC KHO (PRIVATE)
     // =================================================================
 
-    // [MỚI] Kiểm tra tồn kho của 1 lô cụ thể
+    // Kiểm tra tồn kho của 1 lô cụ thể
     private void checkTonKhoLoHang(Integer maKho, Integer maSP, String soLo, Integer soLuongCan) {
         String sql = "SELECT SoLuongTon FROM chitietkho WHERE MaKho = ? AND MaSP = ? AND SoLo = ?";
         try {
@@ -291,79 +307,24 @@ public class PhieuXuatService {
         }
     }
 
-    // [MỚI] Cập nhật tồn kho theo lô (Batch)
+    // Cập nhật tồn kho (Trừ hoặc Cộng)
     private void capNhatTonKhoTheoLo(Integer maKho, Integer maSP, String soLo, Integer soLuongThayDoi) {
         // 1. Cập nhật bảng ChiTietKho (Theo Lô)
         String sqlUpdateKho = "UPDATE chitietkho SET SoLuongTon = SoLuongTon + ? WHERE MaKho = ? AND MaSP = ? AND SoLo = ?";
         int rows = jdbcTemplate.update(sqlUpdateKho, soLuongThayDoi, maKho, maSP, soLo);
 
         if (rows == 0 && soLuongThayDoi < 0) {
-            throw new RuntimeException("Lỗi nghiêm trọng: Không tìm thấy lô hàng để trừ kho!");
+            throw new RuntimeException("Lỗi nghiêm trọng: Không tìm thấy lô hàng " + soLo + " để trừ kho!");
         }
 
-        // 2. Cập nhật bảng SanPham (Tổng tồn kho toàn hệ thống) - Để đồng bộ
+        // 2. Cập nhật bảng SanPham (Tổng tồn kho toàn hệ thống)
         SanPham sp = sanPhamRepository.findById(maSP).orElseThrow();
         int tongHienTai = (sp.getSoLuongTon() == null) ? 0 : sp.getSoLuongTon();
         sp.setSoLuongTon(tongHienTai + soLuongThayDoi);
         sanPhamRepository.update(sp);
     }
 
-    // Các hàm khác giữ nguyên
-    public PhieuXuatHang getPhieuXuatById(Integer id) {
-        PhieuXuatHang pxh = phieuXuatRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phiếu xuất " + id));
-        pxh.setChiTiet(chiTietPhieuXuatRepository.findByMaPhieuXuat(id));
-        return pxh;
-    }
-
-    public List<PhieuXuatHang> getAllPhieuXuat() {
-        return phieuXuatRepository.findAll();
-    }
-
-    public List<PhieuXuatHang> filter(PhieuXuatFilterRequest request) {
-        return phieuXuatRepository.filter(request);
-    }
-
-    @Transactional
-    public PhieuXuatHang createPhieuXuatForGiangVien(PhieuXuatRequest request, String username) {
-        NguoiDung giangVienUser = nguoiDungRepository.findByTenDangNhap(username)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        Integer maKhachHang = findOrCreateCustomerFromUser(giangVienUser);
-        request.setMaKH(maKhachHang);
-        return createPhieuXuat(request, username);
-    }
-
-    private Integer findOrCreateCustomerFromUser(NguoiDung user) {
-        List<KhachHang> existing = khachHangRepository.search(user.getEmail());
-        if (!existing.isEmpty()) {
-            return existing.get(0).getMaKH();
-        }
-        KhachHang newCus = new KhachHang();
-        newCus.setTenKH(user.getHoTen() + " (GV)");
-        newCus.setEmail(user.getEmail());
-        newCus.setSdt(user.getSdt());
-        newCus.setDiaChi("Trường học");
-        return khachHangRepository.save(newCus);
-    }
-
-    public List<PhieuXuatHang> getAllPhieuXuat(String username) {
-        NguoiDung user = nguoiDungRepository.findByTenDangNhap(username)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        int roleId = user.getVaiTro().getMaVaiTro();
-        if (roleId == 1 || roleId == 2 || roleId == 3 || roleId == 4) {
-            return phieuXuatRepository.findAll();
-        } else {
-            return phieuXuatRepository.findByNguoiLap(user.getMaNguoiDung());
-        }
-    }
-
-    private void logActivity(Integer maUser, String act) {
-        HoatDong hd = new HoatDong();
-        hd.setMaNguoiDung(maUser);
-        hd.setHanhDong(act);
-        hd.setThoiGianThucHien(java.time.LocalDateTime.now());
-        hoatDongRepository.save(hd);
-    }
+    // Logic kiểm tra và trừ kho cho lô CỤ THỂ
     private void validateAndDeductSpecificBatch(Integer maKho, ChiTietPhieuXuat ct, LocalDate homNay) {
         String sqlCheck = "SELECT SoLuongTon, NgayHetHan FROM chitietkho WHERE MaKho = ? AND MaSP = ? AND SoLo = ?";
 
@@ -394,16 +355,13 @@ public class PhieuXuatService {
         }
     }
 
-    // -----------------------------------------------------------------
-    // HÀM PHỤ 2: Tự động phân bổ lô (FEFO) khi KHÔNG CÓ Số Lô
-    // -----------------------------------------------------------------
+    // Logic tìm lô tự động (FEFO) và trừ kho
     private void autoAllocateBatches(PhieuXuatHang phieu, ChiTietPhieuXuat yeuCau) {
         int soLuongCan = yeuCau.getSoLuong();
 
         // 1. Tìm các lô khả dụng (Còn hạn, Còn tồn, Xếp theo hạn dùng tăng dần)
         List<Map<String, Object>> batches = findBatchesForAutoPick(phieu.getMaKho(), yeuCau.getMaSP());
 
-        // Check tổng tồn
         int tongTonKhaDung = batches.stream().mapToInt(b -> (int)b.get("SoLuongTon")).sum();
         if (tongTonKhaDung < soLuongCan) {
             throw new RuntimeException("Sản phẩm " + yeuCau.getMaSP() + " (Auto): Tổng tồn kho khả dụng chỉ còn " + tongTonKhaDung + ", không đủ xuất " + soLuongCan);
@@ -438,30 +396,79 @@ public class PhieuXuatService {
         }
     }
 
-    // -----------------------------------------------------------------
-    // HÀM PHỤ 3: Tìm lô hàng khả dụng (Repository Query)
-    // -----------------------------------------------------------------
     private List<Map<String, Object>> findBatchesForAutoPick(Integer maKho, Integer maSP) {
         String sql = """
             SELECT SoLo, SoLuongTon, NgayHetHan 
             FROM chitietkho 
             WHERE MaKho = ? AND MaSP = ? 
               AND SoLuongTon > 0 
-              AND (NgayHetHan IS NULL OR NgayHetHan >= CURDATE()) -- Chỉ lấy lô chưa hết hạn
+              AND (NgayHetHan IS NULL OR NgayHetHan >= CURDATE()) 
             ORDER BY 
-              CASE WHEN NgayHetHan IS NULL THEN 1 ELSE 0 END, -- Ưu tiên có hạn dùng
-              NgayHetHan ASC -- Hết hạn trước xuất trước
+              CASE WHEN NgayHetHan IS NULL THEN 1 ELSE 0 END, 
+              NgayHetHan ASC
         """;
         return jdbcTemplate.queryForList(sql, maKho, maSP);
     }
 
-    // -----------------------------------------------------------------
-    // HÀM PHỤ 4: Xóa dòng chi tiết cũ (Dòng không có số lô)
-    // -----------------------------------------------------------------
     private void deleteOldGenericItem(Integer maPhieu, Integer maSP) {
-        // Vì bảng ChiTietPhieuXuat dùng khóa chính phức hợp (MaPhieu, MaSP, SoLo - hoặc ID tự tăng tùy thiết kế của bạn)
-        // Ở đây tôi dùng SQL trực tiếp để xóa dòng mà SoLo bị Null hoặc Rỗng của SP đó
         String sql = "DELETE FROM chitietphieuxuat WHERE MaPhieuXuat = ? AND MaSP = ? AND (SoLo IS NULL OR SoLo = '')";
         jdbcTemplate.update(sql, maPhieu, maSP);
+    }
+
+    // Các hàm Get/Filter/Log
+    public PhieuXuatHang getPhieuXuatById(Integer id) {
+        PhieuXuatHang pxh = phieuXuatRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy phiếu xuất " + id));
+        pxh.setChiTiet(chiTietPhieuXuatRepository.findByMaPhieuXuat(id));
+        return pxh;
+    }
+
+    public List<PhieuXuatHang> getAllPhieuXuat() {
+        return phieuXuatRepository.findAll();
+    }
+
+    public List<PhieuXuatHang> filter(PhieuXuatFilterRequest request) {
+        return phieuXuatRepository.filter(request);
+    }
+
+    public List<PhieuXuatHang> getAllPhieuXuat(String username) {
+        NguoiDung user = nguoiDungRepository.findByTenDangNhap(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        int roleId = user.getVaiTro().getMaVaiTro();
+        if (roleId == 1 || roleId == 2 || roleId == 3 || roleId == 4) {
+            return phieuXuatRepository.findAll();
+        } else {
+            return phieuXuatRepository.findByNguoiLap(user.getMaNguoiDung());
+        }
+    }
+
+    @Transactional
+    public PhieuXuatHang createPhieuXuatForGiangVien(PhieuXuatRequest request, String username) {
+        NguoiDung giangVienUser = nguoiDungRepository.findByTenDangNhap(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        Integer maKhachHang = findOrCreateCustomerFromUser(giangVienUser);
+        request.setMaKH(maKhachHang);
+        return createPhieuXuat(request, username);
+    }
+
+    private Integer findOrCreateCustomerFromUser(NguoiDung user) {
+        List<KhachHang> existing = khachHangRepository.search(user.getEmail());
+        if (!existing.isEmpty()) {
+            return existing.get(0).getMaKH();
+        }
+        KhachHang newCus = new KhachHang();
+        newCus.setTenKH(user.getHoTen() + " (GV)");
+        newCus.setEmail(user.getEmail());
+        newCus.setSdt(user.getSdt());
+        newCus.setDiaChi("Trường học");
+        return khachHangRepository.save(newCus);
+    }
+
+    private void logActivity(Integer maUser, String act) {
+        HoatDong hd = new HoatDong();
+        hd.setMaNguoiDung(maUser);
+        hd.setHanhDong(act);
+        hd.setThoiGianThucHien(java.time.LocalDateTime.now());
+        hoatDongRepository.save(hd);
     }
 }
