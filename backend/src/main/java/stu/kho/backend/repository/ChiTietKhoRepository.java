@@ -3,6 +3,7 @@ package stu.kho.backend.repository;
 import stu.kho.backend.dto.SanPhamTrongKhoResponse;
 import stu.kho.backend.entity.ChiTietKho;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -22,4 +23,5 @@ public interface ChiTietKhoRepository {
     Optional<ChiTietKho> findByIdForUpdate(Integer maSP, Integer maKho);
     List<Map<String, Object>> findBatchesForAutoPick(Integer maKho, Integer maSP);
 
-    }
+    void upsertTonKho(Integer maKho, Integer maSP, String batchName, LocalDate ngayHetHan, Integer soLuongThayDoi);
+}

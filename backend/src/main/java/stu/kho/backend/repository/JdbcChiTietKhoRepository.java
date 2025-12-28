@@ -7,6 +7,7 @@ import org.springframework.stereotype.Repository;
 import stu.kho.backend.dto.SanPhamTrongKhoResponse;
 import stu.kho.backend.entity.ChiTietKho;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -106,5 +107,25 @@ public class JdbcChiTietKhoRepository implements ChiTietKhoRepository {
           SoLuongTon ASC  -- (Tùy chọn) Ưu tiên lô ít hàng để dọn kho
     """;
         return jdbcTemplate.queryForList(sql, maKho, maSP);
+    }
+    public void upsertTonKho(Integer maKho, Integer maSP, String soLo, LocalDate ngayHetHan, Integer soLuongThayDoi) {
+        // 1. Kiểm tra xem Lô hàng này đã có trong kho chưa
+        // Lưu ý: Bây giờ check tồn tại phải check cả 3 khoá: MaKho + MaSP + SoLo
+        String checkSql = "SELECT COUNT(*) FROM chitietkho WHERE MaKho = ? AND MaSP = ? AND SoLo = ?";
+        Integer count = jdbcTemplate.queryForObject(checkSql, Integer.class, maKho, maSP, soLo);
+
+        if (count != null && count > 0) {
+            // A. NẾU ĐÃ CÓ: Chỉ update số lượng
+            String updateSql = "UPDATE chitietkho SET SoLuongTon = SoLuongTon + ? WHERE MaKho = ? AND MaSP = ? AND SoLo = ?";
+            jdbcTemplate.update(updateSql, soLuongThayDoi, maKho, maSP, soLo);
+        } else {
+            // B. NẾU CHƯA CÓ: Insert dòng mới (Đây là chỗ bị lỗi trong ảnh của bạn)
+            String insertSql = """
+            INSERT INTO chitietkho (MaKho, MaSP, SoLo, NgayHetHan, SoLuongTon) 
+            VALUES (?, ?, ?, ?, ?)
+        """;
+            // Lỗi của bạn là do tham số thứ 3 (soLo) bị null. Code này sẽ fix điều đó.
+            jdbcTemplate.update(insertSql, maKho, maSP, soLo, ngayHetHan, soLuongThayDoi);
+        }
     }
 }
