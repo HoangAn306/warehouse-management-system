@@ -108,33 +108,55 @@ public class PhieuNhapService {
     // 2. APPROVE (Duyệt phiếu - Đã Fix lỗi NULL SoLo)
     // =================================================================
     @Transactional
-    public PhieuNhapHang approvePhieuNhap(Integer maPhieuNhap, String tenNguoiDuyet) {
+    public PhieuNhapHang approvePhieuNhap(Integer id, String tenNguoiDuyet) {
         NguoiDung nguoiDuyet = nguoiDungRepository.findByTenDangNhap(tenNguoiDuyet)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng (người duyệt)."));
+                .orElseThrow(() -> new RuntimeException("User not found"));
 
-        PhieuNhapHang phieuNhap = getPhieuNhapById(maPhieuNhap);
+        PhieuNhapHang phieuNhap = phieuNhapRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Phiếu nhập không tồn tại"));
 
-        if (phieuNhap.getTrangThai() != STATUS_CHO_DUYET) {
-            throw new RuntimeException("Chỉ có thể duyệt phiếu đang ở trạng thái 'Chờ duyệt'.");
+        if (phieuNhap.getTrangThai() != 1) {
+            throw new RuntimeException("Chỉ được duyệt phiếu đang ở trạng thái Chờ.");
         }
 
-        // Cập nhật tồn kho (LOOP qua từng chi tiết)
-        for (ChiTietPhieuNhap ct : phieuNhap.getChiTiet()) {
-            // [FIX ERROR] Truyền đầy đủ SoLo và NgayHetHan vào hàm cập nhật
-            capNhatTonKho(
+        // --- KIỂM TRA LOGIC CHẶN TRÙNG LÔ ---
+        List<ChiTietPhieuNhap> listChiTiet = phieuNhap.getChiTiet();
+
+        for (ChiTietPhieuNhap ct : listChiTiet) {
+            // 1. Kiểm tra xem Lô này đã có trong kho chưa
+            boolean daTonTai = chiTietKhoRepository.checkLooTonTai(
                     phieuNhap.getMaKho(),
                     ct.getMaSP(),
-                    ct.getSoLo(),         // <--- QUAN TRỌNG
-                    ct.getNgayHetHan(),   // <--- QUAN TRỌNG
-                    ct.getSoLuong()
+                    ct.getSoLo()
             );
+
+            // 2. Nếu có rồi -> BÁO LỖI NGAY LẬP TỨC
+            if (daTonTai) {
+                throw new RuntimeException("LỖI: Lô hàng " + ct.getSoLo() + " của sản phẩm " + ct.getMaSP() + " đã tồn tại trong kho. Không thể nhập trùng!");
+            }
+
+            // 3. Nếu chưa có -> Thêm mới (INSERT)
+            // Tạo đối tượng ChiTietKho để lưu
+            ChiTietKho khoMoi = new ChiTietKho();
+            khoMoi.setMaKho(phieuNhap.getMaKho());
+            khoMoi.setMaSP(ct.getMaSP());
+            khoMoi.setSoLo(ct.getSoLo());
+            khoMoi.setNgayHetHan(ct.getNgayHetHan());
+            khoMoi.setSoLuongTon(ct.getSoLuong());
+
+            // Gọi hàm save (chỉ Insert) thay vì upsert
+            chiTietKhoRepository.save(khoMoi);
+
+            // 4. Cập nhật tổng tồn kho (Vẫn cần làm bước này)
+            updateTongTonKhoSanPham(ct.getMaSP(), ct.getSoLuong());
         }
 
-        phieuNhap.setTrangThai(STATUS_DA_DUYET);
+        // Cập nhật trạng thái phiếu
+        phieuNhap.setTrangThai(2);
         phieuNhap.setNguoiDuyet(nguoiDuyet.getMaNguoiDung());
         phieuNhapRepository.update(phieuNhap);
 
-        logActivity(nguoiDuyet.getMaNguoiDung(), "Đã duyệt Phiếu Nhập Hàng #" + maPhieuNhap);
+        logActivity(nguoiDuyet.getMaNguoiDung(), "Duyệt Phiếu Nhập #" + id);
         return phieuNhap;
     }
 
@@ -162,6 +184,15 @@ public class PhieuNhapService {
 
         logActivity(nguoiHuy.getMaNguoiDung(), "Hủy Phiếu Nhập #" + id);
         return phieuNhap;
+    }
+    // Hàm phụ cập nhật tổng tồn kho
+    private void updateTongTonKhoSanPham(Integer maSP, int soLuongThem) {
+        SanPham sp = sanPhamRepository.findById(maSP).orElse(null);
+        if (sp != null) {
+            int tonCu = (sp.getSoLuongTon() == null) ? 0 : sp.getSoLuongTon();
+            sp.setSoLuongTon(tonCu + soLuongThem);
+            sanPhamRepository.update(sp);
+        }
     }
 
     // =================================================================

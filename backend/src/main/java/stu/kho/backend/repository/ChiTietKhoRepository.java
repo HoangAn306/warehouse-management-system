@@ -24,4 +24,6 @@ public interface ChiTietKhoRepository {
     List<Map<String, Object>> findBatchesForAutoPick(Integer maKho, Integer maSP);
 
     void upsertTonKho(Integer maKho, Integer maSP, String batchName, LocalDate ngayHetHan, Integer soLuongThayDoi);
-}
+    boolean checkLooTonTai(Integer maKho, Integer maSP, String soLo);
+
+    }

@@ -143,4 +143,9 @@ public class JdbcChiTietKhoRepository implements ChiTietKhoRepository {
             jdbcTemplate.update(insertSql, maKho, maSP, soLo, ngayHetHan, soLuongThayDoi);
         }
     }
+    public boolean checkLooTonTai(Integer maKho, Integer maSP, String soLo) {
+        String sql = "SELECT COUNT(*) FROM chitietkho WHERE MaKho = ? AND MaSP = ? AND SoLo = ?";
+        Integer count = jdbcTemplate.queryForObject(sql, Integer.class, maKho, maSP, soLo);
+        return count != null && count > 0;
+    }
 }
