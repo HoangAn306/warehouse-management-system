@@ -68,10 +68,16 @@ public class JdbcChiTietKhoRepository implements ChiTietKhoRepository {
     }
     @Override
     public List<SanPhamTrongKhoResponse> findSanPhamByMaKho(Integer maKho) {
-        String sql = "SELECT sp.MaSP, sp.TenSP, sp.DonViTinh, sp.HinhAnh, sp.GiaNhap, ctk.SoLuongTon " +
-                "FROM chitietkho ctk " +
-                "JOIN sanpham sp ON ctk.MaSP = sp.MaSP " +
-                "WHERE ctk.MaKho = ?";
+        // [CẬP NHẬT SQL] Lấy thêm cột SoLo và NgayHetHan
+        String sql = """
+            SELECT 
+                sp.MaSP, sp.TenSP, sp.DonViTinh, sp.HinhAnh, sp.GiaNhap, 
+                ctk.SoLuongTon, ctk.SoLo, ctk.NgayHetHan
+            FROM chitietkho ctk
+            JOIN sanpham sp ON ctk.MaSP = sp.MaSP
+            WHERE ctk.MaKho = ? AND ctk.SoLuongTon > 0 -- Chỉ hiện lô còn hàng
+            ORDER BY sp.MaSP, ctk.NgayHetHan ASC       -- Sắp xếp theo hạn dùng (FEFO)
+        """;
 
         return jdbcTemplate.query(sql, (rs, rowNum) -> {
             SanPhamTrongKhoResponse dto = new SanPhamTrongKhoResponse();
@@ -81,6 +87,15 @@ public class JdbcChiTietKhoRepository implements ChiTietKhoRepository {
             dto.setHinhAnh(rs.getString("HinhAnh"));
             dto.setGiaNhap(rs.getBigDecimal("GiaNhap"));
             dto.setSoLuongTon(rs.getInt("SoLuongTon"));
+
+            // [MỚI] Map dữ liệu Lô và Hạn sử dụng
+            dto.setSoLo(rs.getString("SoLo"));
+
+            java.sql.Date date = rs.getDate("NgayHetHan");
+            if (date != null) {
+                dto.setNgayHetHan(date.toLocalDate());
+            }
+
             return dto;
         }, maKho);
     }
