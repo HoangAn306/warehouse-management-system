@@ -17,7 +17,6 @@ import java.util.List;
 @Service
 public class PhieuNhapService {
 
-    // Khai báo hằng số cho Trạng Thái
     private static final int STATUS_CHO_DUYET = 1;
     private static final int STATUS_DA_DUYET = 2;
     private static final int STATUS_DA_HUY = 3;
@@ -47,20 +46,17 @@ public class PhieuNhapService {
     }
 
     // =================================================================
-    // 1. CREATE (Tạo phiếu - Chờ duyệt)
+    // 1. CREATE (Tạo phiếu)
     // =================================================================
     @Transactional
     public PhieuNhapHang createPhieuNhap(PhieuNhapRequest request, String tenNguoiLap) {
-
         NguoiDung nguoiLap = nguoiDungRepository.findByTenDangNhap(tenNguoiLap)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng lập phiếu."));
 
-        // 1. Tính toán tổng tiền
         BigDecimal tongTien = request.getChiTiet().stream()
                 .map(ct -> ct.getDonGia().multiply(new BigDecimal(ct.getSoLuong())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // 2. Tạo Phiếu Nhập chính
         PhieuNhapHang phieuNhap = new PhieuNhapHang();
         phieuNhap.setTrangThai(STATUS_CHO_DUYET);
         phieuNhap.setMaNCC(request.getMaNCC());
@@ -73,13 +69,11 @@ public class PhieuNhapService {
         Integer maPhieuNhapMoi = phieuNhapRepository.save(phieuNhap);
         phieuNhap.setMaPhieuNhap(maPhieuNhapMoi);
 
-        // 3. Lưu chi tiết
         for (ChiTietPhieuNhapRequest ctRequest : request.getChiTiet()) {
             if (!sanPhamRepository.findById(ctRequest.getMaSP()).isPresent()) {
                 throw new RuntimeException("Sản phẩm với Mã SP: " + ctRequest.getMaSP() + " không tồn tại.");
             }
 
-            // Kiểm tra liên kết NCC
             boolean isLinked = nccSanPhamRepository.existsLink(request.getMaNCC(), ctRequest.getMaSP());
             if (!isLinked) {
                 throw new RuntimeException("Lỗi: Nhà cung cấp không được phép cung cấp sản phẩm SP#" + ctRequest.getMaSP());
@@ -91,21 +85,18 @@ public class PhieuNhapService {
             chiTiet.setSoLuong(ctRequest.getSoLuong());
             chiTiet.setDonGia(ctRequest.getDonGia());
             chiTiet.setThanhTien(ctRequest.getDonGia().multiply(new BigDecimal(ctRequest.getSoLuong())));
-
-            // [QUAN TRỌNG] Lưu thông tin Lô và Hạn sử dụng từ Request vào Database
             chiTiet.setSoLo(ctRequest.getSoLo());
             chiTiet.setNgayHetHan(ctRequest.getNgayHetHan());
 
             chiTietPhieuNhapRepository.save(chiTiet);
         }
 
-        logActivity(nguoiLap.getMaNguoiDung(), "Tạo Phiếu Nhập Hàng #" + maPhieuNhapMoi + " (Chờ duyệt)");
-
+        logActivity(nguoiLap.getMaNguoiDung(), "Tạo Phiếu Nhập Hàng #" + maPhieuNhapMoi);
         return getPhieuNhapById(maPhieuNhapMoi);
     }
 
     // =================================================================
-    // 2. APPROVE (Duyệt phiếu - Đã Fix lỗi NULL SoLo)
+    // 2. APPROVE (Duyệt phiếu - CHẶN TRÙNG LÔ & FIX NULL LIST)
     // =================================================================
     @Transactional
     public PhieuNhapHang approvePhieuNhap(Integer id, String tenNguoiDuyet) {
@@ -115,13 +106,16 @@ public class PhieuNhapService {
         PhieuNhapHang phieuNhap = phieuNhapRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Phiếu nhập không tồn tại"));
 
-        if (phieuNhap.getTrangThai() != 1) {
+        if (phieuNhap.getTrangThai() != STATUS_CHO_DUYET) {
             throw new RuntimeException("Chỉ được duyệt phiếu đang ở trạng thái Chờ.");
         }
 
-        // --- KIỂM TRA LOGIC CHẶN TRÙNG LÔ ---
-        List<ChiTietPhieuNhap> listChiTiet = phieuNhap.getChiTiet();
+        // [QUAN TRỌNG] Lấy danh sách chi tiết từ DB lên
+        // Nếu không có dòng này, phieuNhap.getChiTiet() có thể bị null -> Bỏ qua kiểm tra -> Duyệt sai
+        List<ChiTietPhieuNhap> listChiTiet = chiTietPhieuNhapRepository.findByMaPhieuNhap(id);
+        phieuNhap.setChiTiet(listChiTiet);
 
+        // --- KIỂM TRA LOGIC CHẶN TRÙNG LÔ ---
         for (ChiTietPhieuNhap ct : listChiTiet) {
             // 1. Kiểm tra xem Lô này đã có trong kho chưa
             boolean daTonTai = chiTietKhoRepository.checkLooTonTai(
@@ -130,13 +124,12 @@ public class PhieuNhapService {
                     ct.getSoLo()
             );
 
-            // 2. Nếu có rồi -> BÁO LỖI NGAY LẬP TỨC
+            // 2. Nếu có rồi -> BÁO LỖI NGAY LẬP TỨC (Không cho nhập trùng)
             if (daTonTai) {
-                throw new RuntimeException("LỖI: Lô hàng " + ct.getSoLo() + " của sản phẩm " + ct.getMaSP() + " đã tồn tại trong kho. Không thể nhập trùng!");
+                throw new RuntimeException("LỖI: Lô hàng " + ct.getSoLo() + " của sản phẩm " + ct.getMaSP() + " đã tồn tại trong kho. Vui lòng kiểm tra lại!");
             }
 
             // 3. Nếu chưa có -> Thêm mới (INSERT)
-            // Tạo đối tượng ChiTietKho để lưu
             ChiTietKho khoMoi = new ChiTietKho();
             khoMoi.setMaKho(phieuNhap.getMaKho());
             khoMoi.setMaSP(ct.getMaSP());
@@ -144,15 +137,15 @@ public class PhieuNhapService {
             khoMoi.setNgayHetHan(ct.getNgayHetHan());
             khoMoi.setSoLuongTon(ct.getSoLuong());
 
-            // Gọi hàm save (chỉ Insert) thay vì upsert
+            // Lưu vào kho
             chiTietKhoRepository.save(khoMoi);
 
-            // 4. Cập nhật tổng tồn kho (Vẫn cần làm bước này)
+            // 4. Cập nhật tổng tồn kho
             updateTongTonKhoSanPham(ct.getMaSP(), ct.getSoLuong());
         }
 
         // Cập nhật trạng thái phiếu
-        phieuNhap.setTrangThai(2);
+        phieuNhap.setTrangThai(STATUS_DA_DUYET);
         phieuNhap.setNguoiDuyet(nguoiDuyet.getMaNguoiDung());
         phieuNhapRepository.update(phieuNhap);
 
@@ -185,18 +178,9 @@ public class PhieuNhapService {
         logActivity(nguoiHuy.getMaNguoiDung(), "Hủy Phiếu Nhập #" + id);
         return phieuNhap;
     }
-    // Hàm phụ cập nhật tổng tồn kho
-    private void updateTongTonKhoSanPham(Integer maSP, int soLuongThem) {
-        SanPham sp = sanPhamRepository.findById(maSP).orElse(null);
-        if (sp != null) {
-            int tonCu = (sp.getSoLuongTon() == null) ? 0 : sp.getSoLuongTon();
-            sp.setSoLuongTon(tonCu + soLuongThem);
-            sanPhamRepository.update(sp);
-        }
-    }
 
     // =================================================================
-    // 4. UPDATE (Sửa phiếu - Đã cập nhật logic Lô)
+    // 4. UPDATE (Sửa phiếu)
     // =================================================================
     @Transactional
     public PhieuNhapHang updatePhieuNhap(Integer maPhieuNhap, PhieuNhapRequest request, String tenNguoiSua) {
@@ -205,18 +189,15 @@ public class PhieuNhapService {
 
         PhieuNhapHang phieuNhapCu = getPhieuNhapById(maPhieuNhap);
 
-        // 1. Nếu phiếu ĐÃ HỦY -> Không cho sửa
         if (phieuNhapCu.getTrangThai() == STATUS_DA_HUY) {
             throw new RuntimeException("Không thể sửa phiếu đã hủy.");
         }
 
-        // 2. KIỂM TRA THỜI HẠN
         LocalDateTime limitDate = LocalDateTime.now().minusDays(30);
         if (phieuNhapCu.getNgayLapPhieu().isBefore(limitDate)) {
             throw new RuntimeException("Không thể sửa phiếu đã được tạo quá 30 ngày.");
         }
 
-        // 3. Nếu phiếu ĐÃ DUYỆT -> Kiểm tra quyền & Rollback kho
         if (phieuNhapCu.getTrangThai() == STATUS_DA_DUYET) {
             boolean hasPerm = SecurityContextHolder.getContext().getAuthentication().getAuthorities().stream()
                     .anyMatch(a -> a.getAuthority().equals("PERM_PHIEUNHAP_EDIT_APPROVED"));
@@ -230,17 +211,15 @@ public class PhieuNhapService {
                 capNhatTonKho(
                         phieuNhapCu.getMaKho(),
                         ctCu.getMaSP(),
-                        ctCu.getSoLo(),        // Trừ đúng lô cũ
+                        ctCu.getSoLo(),
                         ctCu.getNgayHetHan(),
-                        -ctCu.getSoLuong()     // Số lượng âm để trừ
+                        -ctCu.getSoLuong()
                 );
             }
         }
 
-        // Xóa chi tiết cũ
         chiTietPhieuNhapRepository.deleteByMaPhieuNhap(maPhieuNhap);
 
-        // Cập nhật thông tin phiếu chính
         BigDecimal tongTienMoi = request.getChiTiet().stream()
                 .map(ct -> ct.getDonGia().multiply(new BigDecimal(ct.getSoLuong())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -252,7 +231,6 @@ public class PhieuNhapService {
 
         phieuNhapRepository.update(phieuNhapCu);
 
-        // Thêm chi tiết MỚI
         for (ChiTietPhieuNhapRequest ctRequest : request.getChiTiet()) {
             if (!sanPhamRepository.findById(ctRequest.getMaSP()).isPresent()) {
                 throw new RuntimeException("Sản phẩm SP#" + ctRequest.getMaSP() + " không tồn tại.");
@@ -264,14 +242,11 @@ public class PhieuNhapService {
             chiTietMoi.setSoLuong(ctRequest.getSoLuong());
             chiTietMoi.setDonGia(ctRequest.getDonGia());
             chiTietMoi.setThanhTien(ctRequest.getDonGia().multiply(new BigDecimal(ctRequest.getSoLuong())));
-
-            // Set thông tin lô
             chiTietMoi.setSoLo(ctRequest.getSoLo());
             chiTietMoi.setNgayHetHan(ctRequest.getNgayHetHan());
 
             chiTietPhieuNhapRepository.save(chiTietMoi);
 
-            // NẾU ĐANG LÀ ĐÃ DUYỆT -> CỘNG LẠI KHO MỚI
             if (phieuNhapCu.getTrangThai() == STATUS_DA_DUYET) {
                 capNhatTonKho(
                         request.getMaKho(),
@@ -297,15 +272,14 @@ public class PhieuNhapService {
 
         PhieuNhapHang phieuNhap = getPhieuNhapById(maPhieuNhap);
 
-        // Nếu đã duyệt -> Hoàn trả tồn kho (Trừ kho)
         if (phieuNhap.getTrangThai() == STATUS_DA_DUYET) {
             for (ChiTietPhieuNhap ct : phieuNhap.getChiTiet()) {
                 capNhatTonKho(
                         phieuNhap.getMaKho(),
                         ct.getMaSP(),
-                        ct.getSoLo(),       // Trừ đúng lô
+                        ct.getSoLo(),
                         ct.getNgayHetHan(),
-                        -ct.getSoLuong()    // Số âm để trừ
+                        -ct.getSoLuong()
                 );
             }
         }
@@ -316,7 +290,8 @@ public class PhieuNhapService {
         logActivity(nguoiXoa.getMaNguoiDung(), "Xóa Phiếu Nhập Hàng #" + maPhieuNhap);
     }
 
-    // --- CÁC HÀM GET & SEARCH ---
+    // --- HELPER FUNCTIONS ---
+
     public List<PhieuNhapHang> getAllPhieuNhap() {
         return phieuNhapRepository.findAll();
     }
@@ -324,9 +299,7 @@ public class PhieuNhapService {
     public PhieuNhapHang getPhieuNhapById(Integer id) {
         PhieuNhapHang pnh = phieuNhapRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy Phiếu Nhập #" + id));
-
-        List<ChiTietPhieuNhap> chiTiet = chiTietPhieuNhapRepository.findByMaPhieuNhap(id);
-        pnh.setChiTiet(chiTiet);
+        pnh.setChiTiet(chiTietPhieuNhapRepository.findByMaPhieuNhap(id));
         return pnh;
     }
 
@@ -338,30 +311,22 @@ public class PhieuNhapService {
         return phieuNhapRepository.filter(request);
     }
 
-    // =================================================================
-    // HÀM TIỆN ÍCH QUAN TRỌNG: CẬP NHẬT KHO THEO LÔ
-    // =================================================================
+    private void updateTongTonKhoSanPham(Integer maSP, int soLuongThem) {
+        SanPham sp = sanPhamRepository.findById(maSP).orElse(null);
+        if (sp != null) {
+            int tonCu = (sp.getSoLuongTon() == null) ? 0 : sp.getSoLuongTon();
+            sp.setSoLuongTon(tonCu + soLuongThem);
+            sanPhamRepository.update(sp);
+        }
+    }
+
     private void capNhatTonKho(Integer maKho, Integer maSP, String soLo, LocalDate ngayHetHan, Integer soLuongThayDoi) {
         if (soLuongThayDoi == 0) return;
-
-        // 1. Xử lý trường hợp SoLo bị null (gán mặc định để tránh lỗi SQL)
         String batchName = (soLo == null || soLo.isEmpty()) ? "LO-DEFAULT" : soLo;
-
-        // 2. Gọi Repository để Upsert (Insert hoặc Update) vào bảng chitietkho
-        // Lưu ý: Hàm upsertTonKho phải được định nghĩa trong JdbcChiTietKhoRepository
         chiTietKhoRepository.upsertTonKho(maKho, maSP, batchName, ngayHetHan, soLuongThayDoi);
 
-        // 3. Cập nhật bảng SanPham (Tổng tồn kho của tất cả các lô)
-        // Phần này giữ nguyên vì bảng Sản Phẩm chỉ quan tâm tổng số lượng
         SanPham sanPham = sanPhamRepository.findById(maSP).orElseThrow();
         int tongTonMoi = (sanPham.getSoLuongTon() == null ? 0 : sanPham.getSoLuongTon()) + soLuongThayDoi;
-
-        // Tránh số lượng âm trên tổng
-        if (tongTonMoi < 0) {
-            // Có thể throw exception hoặc cho phép âm tuỳ nghiệp vụ, ở đây mình tạm cho phép để đồng bộ
-            // throw new RuntimeException("Lỗi logic: Tổng tồn sản phẩm bị âm.");
-        }
-
         sanPham.setSoLuongTon(tongTonMoi);
         sanPhamRepository.update(sanPham);
     }
