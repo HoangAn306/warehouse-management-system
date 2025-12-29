@@ -19,6 +19,7 @@ import {
   Card,
   DatePicker,
   Tooltip,
+  Grid, // [1] Import Grid
 } from "antd";
 import {
   PlusOutlined,
@@ -42,16 +43,19 @@ import dayjs from "dayjs";
 const { Option } = Select;
 const { RangePicker } = DatePicker;
 
-// --- CẤU HÌNH ID QUYỀN (Theo yêu cầu của bạn) ---
-const PERM_CREATE = 23; // Tạo mới
-const PERM_EDIT = 24; // Cập nhật (Phiếu chờ duyệt)
-const PERM_DELETE = 25; // Xóa
-const PERM_VIEW = 27; // Xem danh sách
-const PERM_APPROVE = 42; // Duyệt phiếu
-const PERM_CANCEL = 43; // Hủy phiếu
-const PERM_EDIT_APPROVED = 121; // Sửa phiếu đã duyệt
+// --- CẤU HÌNH ID QUYỀN ---
+const PERM_CREATE = 23;
+const PERM_EDIT = 24;
+const PERM_DELETE = 25;
+const PERM_VIEW = 27;
+const PERM_APPROVE = 42;
+const PERM_CANCEL = 43;
+const PERM_EDIT_APPROVED = 121;
 
 const PhieuXuatPage = () => {
+  // [2] Hook kiểm tra màn hình
+  const screens = Grid.useBreakpoint();
+
   const [listData, setListData] = useState([]);
 
   // State phân trang
@@ -184,14 +188,11 @@ const PhieuXuatPage = () => {
     }
   }, []);
 
-  // --- USE EFFECT KHỞI TẠO (QUAN TRỌNG NHẤT) ---
   useEffect(() => {
     const storedUser = localStorage.getItem("user_info");
     if (storedUser) {
       try {
         let user = JSON.parse(storedUser);
-
-        // Fix lỗi cấu trúc dữ liệu user bị lồng
         if (
           user.quyen &&
           !Array.isArray(user.quyen) &&
@@ -203,38 +204,26 @@ const PhieuXuatPage = () => {
 
         const roleName = (user.vaiTro || user.tenVaiTro || "").toUpperCase();
         setIsAdmin(roleName === "ADMIN");
+        setIsLecturer(roleName === "GIANG_VIEN");
 
-        if (roleName === "GIANG_VIEN") {
-          setIsLecturer(true);
-        } else {
-          setIsLecturer(false);
-        }
-
-        // --- XỬ LÝ DANH SÁCH QUYỀN ---
         let rawPerms = user.dsQuyenSoHuu || user.quyen || [];
         if (!Array.isArray(rawPerms)) rawPerms = [];
 
-        // Chuyển tất cả về số nguyên (ID quyền)
         const parsedPerms = rawPerms.map((p) => {
           if (typeof p === "object" && p !== null)
             return parseInt(p.maQuyen || p.id);
           return parseInt(p);
         });
 
-        // [!!!] QUAN TRỌNG: LƯU QUYỀN VÀO STATE [!!!]
-        // (Đây là phần thiếu ở code cũ khiến nút không hiện)
         setPermissions(parsedPerms);
 
-        // --- CHECK QUYỀN 27 ĐỂ GỌI API ---
         const hasViewPerm = parsedPerms.includes(PERM_VIEW);
-
         if (roleName === "ADMIN" || hasViewPerm || roleName === "GIANG_VIEN") {
           fetchData(1, 5, filter);
         } else {
           setLoading(false);
         }
       } catch (e) {
-        console.error("Lỗi parse user:", e);
         setPermissions([]);
       }
     }
@@ -261,20 +250,12 @@ const PhieuXuatPage = () => {
     fetchData(newPagination.current, newPagination.pageSize, filter);
   };
 
-  // Hàm kiểm tra quyền nhanh
   const checkPerm = (id) => isAdmin || permissions.includes(id);
 
-  // --- LOGIC HIỂN THỊ NÚT SỬA ---
   const isEditable = (record) => {
-    // 1. Admin luôn sửa được (trừ khi đã Hủy)
     if (isAdmin && record.trangThai !== 3) return true;
-
-    // 2. Phiếu Chờ Duyệt (Status 1) -> Cần quyền 24
     if (record.trangThai === 1) return checkPerm(PERM_EDIT);
-
-    // 3. Phiếu Đã Duyệt (Status 2) -> Cần quyền 121
     if (record.trangThai === 2) return checkPerm(PERM_EDIT_APPROVED);
-
     return false;
   };
 
@@ -291,7 +272,6 @@ const PhieuXuatPage = () => {
     return status;
   };
 
-  // Modal Handlers
   const handleOpenModal = () => {
     setEditingRecord(null);
     setSelectedKho(null);
@@ -307,13 +287,14 @@ const PhieuXuatPage = () => {
     try {
       const res = await warehouseService.getInventoryByWarehouse(khoId);
       setCurrentInventory(res.data || []);
-      message.info("Đã cập nhật danh sách sản phẩm theo kho xuất");
+      message.info("Đã cập nhật danh sách sản phẩm");
     } catch (error) {
       setCurrentInventory([]);
     }
   };
 
   const handleEdit = async (record) => {
+    // 1. Kiểm tra quyền và trạng thái (Giữ nguyên)
     if (record.trangThai === 2) {
       const createdDate = dayjs(record.ngayLapPhieu);
       const diffDays = dayjs().diff(createdDate, "day");
@@ -333,10 +314,22 @@ const PhieuXuatPage = () => {
     }
 
     try {
+      // 2. Lấy dữ liệu chi tiết
       const response = await phieuXuatService.getPhieuXuatById(
         record.maPhieuXuat
       );
       const fullData = response.data;
+
+      // [THÊM MỚI] Xử lý ẩn chữ PENDING trong danh sách chi tiết
+      if (fullData.chiTiet && Array.isArray(fullData.chiTiet)) {
+        fullData.chiTiet = fullData.chiTiet.map((item) => ({
+          ...item,
+          // Nếu là PENDING thì trả về null để form hiển thị trống, ngược lại giữ nguyên
+          soLo: item.soLo === "PENDING" ? null : item.soLo,
+        }));
+      }
+
+      // 3. Đưa dữ liệu vào form
       setEditingRecord(fullData);
       if (fullData.maKho) handleKhoChange(fullData.maKho);
       form.setFieldsValue(fullData);
@@ -380,7 +373,11 @@ const PhieuXuatPage = () => {
           setIsModalVisible(false);
           fetchData(pagination.current, pagination.pageSize, filter);
         } catch (error) {
-          messageApi.error("Có lỗi xảy ra!");
+          const errorMessage =
+            error.response?.data?.message ||
+            error.response?.data ||
+            "Lỗi xử lý!";
+          messageApi.error(errorMessage);
         }
       })
       .catch(() => {});
@@ -419,30 +416,38 @@ const PhieuXuatPage = () => {
     }
   };
 
-  // --- CẤU HÌNH CỘT VÀ QUYỀN NÚT BẤM ---
+  // --- CẤU HÌNH CỘT RESPONSIVE ---
   const columns = [
     {
       title: "Ngày Lập",
       dataIndex: "ngayLapPhieu",
-      width: "15%",
+      width: 150,
+      fixed: screens.lg ? "left" : null,
       render: (val) => dayjs(val).format("DD/MM/YYYY HH:mm"),
+    },
+    {
+      title: "Chứng Từ",
+      dataIndex: "chungTu",
+      width: 120,
+      fixed: screens.lg ? "left" : null,
     },
     {
       title: "Trạng Thái",
       dataIndex: "trangThai",
-      width: "10%",
+      width: 120,
       render: renderStatus,
     },
     {
       title: "Tổng Tiền",
       dataIndex: "tongTien",
-      width: "10%",
+      width: 120,
+      align: "right",
       render: (value) => `${Number(value || 0).toLocaleString()} đ`,
     },
     {
       title: "Khách Hàng",
       dataIndex: "maKH",
-      width: "18%",
+      width: 200,
       render: (id, record) => {
         if (!isLecturer) {
           const kh = listKhachHang.find((item) => item.maKH === id);
@@ -457,86 +462,71 @@ const PhieuXuatPage = () => {
     {
       title: "Kho Xuất",
       dataIndex: "maKho",
-      width: "15%",
+      width: 150,
       render: (maKho) =>
         listKho.find((k) => k.maKho === maKho)?.tenKho || `Mã: ${maKho}`,
     },
     {
-      title: "Người Duyệt",
-      dataIndex: "nguoiDuyet",
-      width: "10%",
-      render: (id) => getUserName(id),
-    },
-    {
       title: "Hành động",
       key: "action",
-      width: "20%",
+      width: 200,
+      fixed: screens.lg ? "right" : null,
+      align: "center",
       render: (_, record) => {
-        // Trạng thái phiếu
-        const isChoDuyet = record.trangThai === 1; // Status 1
-
-        // Kiểm tra quyền từng chức năng
-        const allowEdit = isEditable(record); // Logic (24 hoặc 121)
-        // Lưu ý: Biến PERM_DELETE ở trên mình khai báo là 25.
-        // Chỗ này mình dùng trực tiếp logic checkPerm(PERM_DELETE)
+        const isChoDuyet = record.trangThai === 1;
+        const allowEdit = isEditable(record);
         const canDel = checkPerm(PERM_DELETE);
-
-        const allowApprove = checkPerm(PERM_APPROVE); // Quyền 42: Duyệt
-        const allowCancel = checkPerm(PERM_CANCEL); // Quyền 43: Hủy
+        const allowApprove = checkPerm(PERM_APPROVE);
+        const allowCancel = checkPerm(PERM_CANCEL);
 
         return (
           <Space
             size="small"
             wrap={false}
-            style={{ display: "flex", flexWrap: "nowrap" }}
           >
-            {/* 1. Nút Xem: Luôn hiện */}
             <Tooltip title="Xem chi tiết">
               <Button
                 icon={<EyeOutlined />}
+                size="small"
                 onClick={() => handleViewDetail(record)}
               />
             </Tooltip>
-
-            {/* 2. Nút Sửa: Dựa trên isEditable (Quyền 24 hoặc 121) */}
             {allowEdit && (
               <Tooltip title="Sửa phiếu">
                 <Button
                   icon={<EditOutlined />}
+                  size="small"
                   onClick={() => handleEdit(record)}
                 />
               </Tooltip>
             )}
-
-            {/* 3. Nút Xóa: Status 1 + Quyền 25 */}
             {isChoDuyet && canDel && (
               <Tooltip title="Xóa phiếu">
                 <Button
                   icon={<DeleteOutlined />}
                   danger
+                  size="small"
                   onClick={() => handleDelete(record.maPhieuXuat)}
                 />
               </Tooltip>
             )}
-
-            {/* 4. Nút Duyệt: Status 1 + Quyền 42 */}
             {isChoDuyet && allowApprove && (
-              <Tooltip title="Duyệt phiếu ">
+              <Tooltip title="Duyệt phiếu">
                 <Button
                   icon={<CheckCircleOutlined />}
                   onClick={() => handleApprove(record.maPhieuXuat)}
                   style={{ color: "green", borderColor: "green" }}
+                  size="small"
                 />
               </Tooltip>
             )}
-
-            {/* 5. Nút Hủy: Status 1 + Quyền 43 */}
             {isChoDuyet && allowCancel && (
-              <Tooltip title="Hủy phiếu ">
+              <Tooltip title="Hủy phiếu">
                 <Button
                   icon={<CloseCircleOutlined />}
                   onClick={() => handleReject(record.maPhieuXuat)}
                   danger
+                  size="small"
                 />
               </Tooltip>
             )}
@@ -547,31 +537,31 @@ const PhieuXuatPage = () => {
   ];
 
   const hasViewRight = isAdmin || permissions.includes(PERM_VIEW) || isLecturer;
-
-  // Chặn truy cập nếu không có quyền xem
   if (!loading && permissions.length > 0 && !hasViewRight) {
     return (
       <Card style={{ margin: 20, textAlign: "center" }}>
         <h2 style={{ color: "red" }}>Truy cập bị từ chối</h2>
-        <p>Tài khoản của bạn chưa được cấp quyền xem danh sách phiếu xuất.</p>
-        <p>
-          Vui lòng liên hệ Admin để cấp quyền mã: <b>{PERM_VIEW}</b>
-        </p>
+        <p>Bạn không có quyền xem danh sách.</p>
       </Card>
     );
   }
 
   return (
-    <div>
+    <div style={{ padding: "0 10px" }}>
       {contextHolder}
 
       <Card
         style={{ marginBottom: 16 }}
         bodyStyle={{ padding: "16px" }}
       >
+        {/* BỘ LỌC RESPONSIVE - ĐÃ CÂN CHỈNH LẠI CỘT ĐỂ KHÔNG BỊ DÍNH */}
         <Row gutter={[16, 16]}>
-          <Col span={4}>
-            <div style={{ fontWeight: 500, marginBottom: 5 }}>Mã chứng từ</div>
+          {/* 1. Mã chứng từ: Giảm xuống 3 */}
+          <Col
+            xs={24}
+            md={3}
+          >
+            <div style={{ fontWeight: 500 }}>Mã chứng từ</div>
             <Input
               placeholder="Nhập mã..."
               prefix={<SearchOutlined />}
@@ -581,8 +571,13 @@ const PhieuXuatPage = () => {
               }
             />
           </Col>
-          <Col span={4}>
-            <div style={{ fontWeight: 500, marginBottom: 5 }}>Trạng thái</div>
+
+          {/* 2. Trạng thái: Giảm xuống 3 */}
+          <Col
+            xs={24}
+            md={3}
+          >
+            <div style={{ fontWeight: 500 }}>Trạng thái</div>
             <Select
               style={{ width: "100%" }}
               placeholder="Chọn trạng thái"
@@ -595,8 +590,13 @@ const PhieuXuatPage = () => {
               <Option value={3}>Không duyệt</Option>
             </Select>
           </Col>
-          <Col span={4}>
-            <div style={{ fontWeight: 500, marginBottom: 5 }}>Kho xuất</div>
+
+          {/* 3. Kho xuất: Giữ 4 */}
+          <Col
+            xs={24}
+            md={4}
+          >
+            <div style={{ fontWeight: 500 }}>Kho xuất</div>
             <Select
               style={{ width: "100%" }}
               placeholder="Chọn kho"
@@ -614,8 +614,13 @@ const PhieuXuatPage = () => {
               ))}
             </Select>
           </Col>
-          <Col span={4}>
-            <div style={{ fontWeight: 500, marginBottom: 5 }}>Khách hàng</div>
+
+          {/* 4. Khách hàng: Giữ 4 */}
+          <Col
+            xs={24}
+            md={4}
+          >
+            <div style={{ fontWeight: 500 }}>Khách hàng</div>
             <Select
               style={{ width: "100%" }}
               placeholder="Chọn KH"
@@ -633,10 +638,13 @@ const PhieuXuatPage = () => {
               ))}
             </Select>
           </Col>
-          <Col span={5}>
-            <div style={{ fontWeight: 500, marginBottom: 5 }}>
-              Ngày lập phiếu
-            </div>
+
+          {/* 5. Ngày lập phiếu: Tăng lên 6 để hiển thị thoải mái */}
+          <Col
+            xs={24}
+            md={6}
+          >
+            <div style={{ fontWeight: 500 }}>Ngày lập phiếu</div>
             <RangePicker
               style={{ width: "100%" }}
               format="DD/MM/YYYY"
@@ -645,35 +653,40 @@ const PhieuXuatPage = () => {
               onChange={(dates) => setFilter({ ...filter, dateRange: dates })}
             />
           </Col>
+
+          {/* 6. Nút bấm: Tăng lên 4 để tách biệt với ngày lập */}
           <Col
-            span={3}
+            xs={24}
+            md={4}
             style={{
-              textAlign: "right",
+              textAlign: screens.md ? "right" : "left",
               display: "flex",
               alignItems: "flex-end",
-              justifyContent: "flex-end",
+              justifyContent: screens.md ? "flex-end" : "flex-start",
             }}
           >
-            <Space>
+            <Space style={{ width: screens.md ? "auto" : "100%" }}>
               <Button
                 type="primary"
                 icon={<SearchOutlined />}
                 onClick={handleSearch}
+                block={!screens.md}
               >
                 Tìm
               </Button>
               <Button
                 icon={<ClearOutlined />}
                 onClick={handleResetFilter}
-                title="Xóa lọc"
-              />
+                block={!screens.md}
+              >
+                Xóa
+              </Button>
             </Space>
           </Col>
         </Row>
       </Card>
 
       <Space style={{ marginBottom: 16 }}>
-        {/* Nút Tạo Mới: Cần quyền 23 */}
         {(isAdmin || permissions.includes(PERM_CREATE)) && (
           <Button
             type="primary"
@@ -699,9 +712,10 @@ const PhieuXuatPage = () => {
         dataSource={listData}
         loading={loading}
         rowKey="maPhieuXuat"
-        pagination={pagination}
+        pagination={{ ...pagination, size: "small" }}
         onChange={handleTableChange}
-        scroll={{ x: "max-content" }}
+        scroll={{ x: 1200 }}
+        size="small"
       />
 
       {/* Modal Form: Thêm/Sửa */}
@@ -710,7 +724,8 @@ const PhieuXuatPage = () => {
         open={isModalVisible}
         onOk={handleOk}
         onCancel={() => setIsModalVisible(false)}
-        width={1000}
+        width={screens.md ? 1000 : "100%"}
+        style={{ top: 20 }}
       >
         <Form
           form={form}
@@ -721,9 +736,7 @@ const PhieuXuatPage = () => {
               <Form.Item
                 name="maKH"
                 label="Khách Hàng"
-                rules={[
-                  { required: true, message: "Vui lòng chọn khách hàng!" },
-                ]}
+                rules={[{ required: true, message: "Chọn KH" }]}
               >
                 <Select
                   style={{ width: 200 }}
@@ -745,7 +758,7 @@ const PhieuXuatPage = () => {
             <Form.Item
               name="maKho"
               label="Kho Xuất Hàng"
-              rules={[{ required: true, message: "Vui lòng chọn kho!" }]}
+              rules={[{ required: true, message: "Chọn kho" }]}
             >
               <Select
                 style={{ width: 200 }}
@@ -767,33 +780,31 @@ const PhieuXuatPage = () => {
             <Form.Item
               name="chungTu"
               label="Chứng Từ"
-              rules={[{ required: true, message: "Vui lòng nhập Chứng Từ " }]}
+              rules={[{ required: true, message: "Nhập Chứng Từ" }]}
             >
               <Input placeholder="VD: PX-001" />
             </Form.Item>
           </Space>
 
-          <Row
-            gutter={8}
-            style={{
-              marginBottom: 5,
-              fontWeight: "bold",
-              textAlign: "center",
-              background: "#f0f2f5",
-              padding: "5px 0",
-              borderRadius: "4px",
-            }}
-          >
-            <Col
-              span={10}
-              style={{ textAlign: "left", paddingLeft: 15 }}
+          {/* Header Form List Responsive */}
+          {screens.md && (
+            <Row
+              gutter={8}
+              style={{
+                marginBottom: 5,
+                fontWeight: "bold",
+                textAlign: "center",
+                background: "#f0f2f5",
+                padding: "5px 0",
+              }}
             >
-              Sản phẩm
-            </Col>
-            <Col span={5}>Số lượng</Col>
-            <Col span={6}>Đơn giá</Col>
-            <Col span={2}>Xóa</Col>
-          </Row>
+              <Col span={7}>Sản phẩm</Col>
+              <Col span={4}>Số lô</Col> {/* Thêm cột Số lô */}
+              <Col span={4}>Số lượng</Col>
+              <Col span={7}>Đơn giá</Col>
+              <Col span={2}>Xóa</Col>
+            </Row>
+          )}
 
           <Form.List name="chiTiet">
             {(fields, { add, remove }) => (
@@ -801,23 +812,30 @@ const PhieuXuatPage = () => {
                 {fields.map(({ key, name, ...restField }) => (
                   <Row
                     key={key}
-                    gutter={8}
-                    style={{ marginBottom: 10 }}
+                    gutter={[8, 8]}
+                    style={{
+                      marginBottom: 10,
+                      borderBottom: !screens.md ? "1px solid #eee" : "none",
+                      paddingBottom: !screens.md ? 10 : 0,
+                    }}
                     align="middle"
                   >
-                    <Col span={10}>
+                    {/* 1. Sản Phẩm */}
+                    <Col
+                      xs={24}
+                      md={7}
+                    >
                       <Form.Item
                         {...restField}
                         name={[name, "maSP"]}
+                        label={!screens.md ? "Sản phẩm" : null}
                         rules={[{ required: true, message: "Chọn SP" }]}
                         style={{ marginBottom: 0 }}
                       >
                         <Select
-                          style={{ width: 300 }}
+                          style={{ width: "100%" }}
                           placeholder={
-                            selectedKho
-                              ? "Chọn Sản phẩm"
-                              : "Vui lòng chọn Kho Xuất"
+                            selectedKho ? "Chọn SP" : "Chọn Kho Xuất trước"
                           }
                           showSearch
                           optionFilterProp="children"
@@ -834,13 +852,34 @@ const PhieuXuatPage = () => {
                         </Select>
                       </Form.Item>
                     </Col>
-                    <Col span={5}>
+
+                    {/* 2. Số lô (MỚI THÊM) */}
+                    <Col
+                      xs={12}
+                      md={4}
+                    >
+                      <Form.Item
+                        {...restField}
+                        name={[name, "soLo"]}
+                        label={!screens.md ? "Số lô" : null}
+                        rules={[{ message: "Nhập lô" }]}
+                        style={{ marginBottom: 0 }}
+                      >
+                        <Input placeholder="Số lô" />
+                      </Form.Item>
+                    </Col>
+
+                    {/* 3. Số lượng */}
+                    <Col
+                      xs={12}
+                      md={4}
+                    >
                       <Form.Item
                         {...restField}
                         name={[name, "soLuong"]}
+                        label={!screens.md ? "Số lượng" : null}
                         rules={[
-                          { required: true, message: "" },
-                          { type: "integer", min: 1, message: ">0" },
+                          { required: true, message: "Nhập SL" },
                           ({ getFieldValue }) => ({
                             validator(_, value) {
                               if (!value) return Promise.resolve();
@@ -853,9 +892,7 @@ const PhieuXuatPage = () => {
                                 (i) => i.maSP === selectedSP
                               );
                               if (inStock && value > inStock.soLuongTon)
-                                return Promise.reject(
-                                  new Error(`Không đủ hàng`)
-                                );
+                                return Promise.reject(new Error(`Quá tồn kho`));
                               return Promise.resolve();
                             },
                           }),
@@ -865,16 +902,21 @@ const PhieuXuatPage = () => {
                         <InputNumber
                           placeholder="SL"
                           min={1}
-                          precision={0}
                           style={{ width: "100%" }}
                         />
                       </Form.Item>
                     </Col>
-                    <Col span={6}>
+
+                    {/* 4. Đơn giá */}
+                    <Col
+                      xs={24}
+                      md={7}
+                    >
                       <Form.Item
                         {...restField}
                         name={[name, "donGia"]}
-                        rules={[{ required: true, message: "" }]}
+                        label={!screens.md ? "Đơn giá" : null}
+                        rules={[{ required: true, message: "Nhập giá" }]}
                         style={{ marginBottom: 0 }}
                       >
                         <InputNumber
@@ -884,13 +926,18 @@ const PhieuXuatPage = () => {
                             `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
                           }
                           parser={(v) => v.replace(/\$\s?|(,*)/g, "")}
-                          style={{ width: 150 }}
+                          style={{ width: "100%" }}
                         />
                       </Form.Item>
                     </Col>
+
+                    {/* 5. Xóa */}
                     <Col
-                      span={2}
-                      style={{ textAlign: "center" }}
+                      xs={24}
+                      md={2}
+                      style={{
+                        textAlign: !screens.md ? "right" : "center",
+                      }}
                     >
                       <MinusCircleOutlined
                         onClick={() => remove(name)}
@@ -943,13 +990,14 @@ const PhieuXuatPage = () => {
             Đóng
           </Button>,
         ]}
-        width={900}
+        width={screens.md ? 900 : "100%"}
       >
         {viewingPhieuXuat && (
           <div>
             <Descriptions
               bordered
-              column={2}
+              column={screens.md ? 2 : 1}
+              size="small"
             >
               <Descriptions.Item label="Mã Phiếu">
                 {viewingPhieuXuat.maPhieuXuat}
@@ -983,29 +1031,23 @@ const PhieuXuatPage = () => {
                 {getUserName(viewingPhieuXuat.nguoiDuyet)}
               </Descriptions.Item>
             </Descriptions>
-            <Divider
-              orientation="left"
-              style={{
-                borderColor: "#52c41a",
-                color: "#52c41a",
-                fontSize: "16px",
-              }}
-            >
-              CHI TIẾT XUẤT
-            </Divider>
+            <Divider orientation="left">CHI TIẾT XUẤT</Divider>
             <Table
               dataSource={viewingPhieuXuat.chiTiet || []}
               rowKey="maSP"
               pagination={false}
               bordered
+              scroll={{ x: 600 }}
+              size="small"
               columns={[
                 {
-                  title: "Tên SP",
+                  title: "Tên sản phẩm",
                   dataIndex: "maSP",
                   render: (id) =>
                     listSanPham.find((s) => s.maSP === id)?.tenSP || id,
                 },
-                { title: "SL", dataIndex: "soLuong", align: "center" },
+                { title: "Số lượng", dataIndex: "soLuong", align: "center" },
+                { title: "Số lô", dataIndex: "soLo" },
                 {
                   title: "Đơn Giá",
                   dataIndex: "donGia",

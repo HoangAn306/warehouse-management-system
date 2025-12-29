@@ -29,7 +29,7 @@ import {
   ClearOutlined,
 } from "@ant-design/icons";
 import * as warehouseService from "../../services/warehouse.service";
-
+import dayjs from "dayjs";
 // --- CẤU HÌNH ID QUYỀN (KHO HÀNG) ---
 const PERM_VIEW = 70;
 const PERM_CREATE = 71;
@@ -270,7 +270,7 @@ const WarehousePage = () => {
         const allowDelete = checkPerm(PERM_DELETE);
 
         return (
-         <Space size="small">
+          <Space size="small">
             {/* [ĐÃ SỬA] Chỉ hiển thị nút Xem Tồn Kho khi KHÔNG ở trong thùng rác */}
             {!inTrashMode && (
               <Tooltip title="Xem tồn kho">
@@ -502,6 +502,14 @@ const WarehousePage = () => {
           columns={[
             { title: "Mã SP", dataIndex: "maSP", width: 80 },
             { title: "Tên Sản Phẩm", dataIndex: "tenSP", width: 150 },
+            { title: "Số lô", dataIndex: "soLo", width: 80 },
+            {
+              title: "Ngày hết hạn",
+              dataIndex: "ngayHetHan",
+              render: (text) => {
+                return text ? dayjs(text).format("DD/MM/YYYY") : "";
+              },
+            },
             {
               title: "Tồn",
               dataIndex: "soLuongTon",

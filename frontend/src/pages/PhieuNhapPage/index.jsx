@@ -19,6 +19,7 @@ import {
   Card,
   DatePicker,
   Tooltip,
+  Grid, // [1] Import Grid
 } from "antd";
 import {
   PlusOutlined,
@@ -52,6 +53,10 @@ const PERM_CANCEL = 41;
 const PERM_EDIT_APPROVED = 120;
 
 const PhieuNhapPage = () => {
+  // [2] Hook kiểm tra màn hình
+  // screens.lg = true (>= 992px) -> PC/Laptop. False -> Mobile/Tablet.
+  const screens = Grid.useBreakpoint();
+
   const [listData, setListData] = useState([]);
 
   // State phân trang
@@ -78,10 +83,8 @@ const PhieuNhapPage = () => {
   const [listNhaCungCap, setListNhaCungCap] = useState([]);
   const [listUser, setListUser] = useState([]);
 
-  // [THÊM] State lưu NCC đang chọn trong Modal
   const [selectedNCC, setSelectedNCC] = useState(null);
 
-  // State xử lý form
   const [loading, setLoading] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingRecord, setEditingRecord] = useState(null);
@@ -94,7 +97,6 @@ const PhieuNhapPage = () => {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [viewingPhieuNhap, setViewingPhieuNhap] = useState(null);
 
-  // State Quyền hạn
   const [permissions, setPermissions] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -261,18 +263,14 @@ const PhieuNhapPage = () => {
     return s;
   };
 
-  // --- [THÊM] HÀM XỬ LÝ KHI CHỌN NCC ---
   const handleNCCChange = (value) => {
     setSelectedNCC(value);
-    // Khi đổi NCC, xóa danh sách sản phẩm đã chọn bên dưới để tránh lỗi
     form.setFieldsValue({ chiTiet: [] });
-    
   };
 
-  // --- MODAL HANDLERS ---
   const handleOpenModal = () => {
     setEditingRecord(null);
-    setSelectedNCC(null); // Reset NCC
+    setSelectedNCC(null);
     form.resetFields();
     setIsModalVisible(true);
   };
@@ -286,15 +284,22 @@ const PhieuNhapPage = () => {
     }
     try {
       const res = await phieuNhapService.getPhieuNhapById(record.maPhieuNhap);
-      setEditingRecord(res.data);
+      const data = res.data;
 
-      // [QUAN TRỌNG] Set selectedNCC khi mở form sửa
-      setSelectedNCC(res.data.maNCC);
+      if (data.chiTiet && Array.isArray(data.chiTiet)) {
+        data.chiTiet = data.chiTiet.map((item) => ({
+          ...item,
+          ngayHetHan: item.ngayHetHan ? dayjs(item.ngayHetHan) : null,
+        }));
+      }
 
-      form.setFieldsValue(res.data);
+      setEditingRecord(data);
+      setSelectedNCC(data.maNCC);
+      form.setFieldsValue(data);
       setIsModalVisible(true);
     } catch (e) {
       messageApi.error("Lỗi tải chi tiết");
+      console.error(e);
     }
   };
 
@@ -313,20 +318,34 @@ const PhieuNhapPage = () => {
       .validateFields()
       .then(async (values) => {
         try {
+          const submitData = {
+            ...values,
+            chiTiet: values.chiTiet.map((item) => ({
+              ...item,
+              ngayHetHan: item.ngayHetHan
+                ? item.ngayHetHan.format("YYYY-MM-DD")
+                : null,
+            })),
+          };
+
           if (editingRecord) {
             await phieuNhapService.updatePhieuNhap(
               editingRecord.maPhieuNhap,
-              values
+              submitData
             );
             messageApi.success("Cập nhật thành công!");
           } else {
-            await phieuNhapService.createPhieuNhap(values);
+            await phieuNhapService.createPhieuNhap(submitData);
             messageApi.success("Tạo mới thành công!");
           }
           setIsModalVisible(false);
           fetchData(pagination.current, pagination.pageSize, filter);
         } catch (error) {
-          messageApi.error("Lỗi xử lý!");
+          const errorMessage =
+            error.response?.data?.message ||
+            error.response?.data ||
+            "Lỗi xử lý!";
+          messageApi.error(errorMessage);
         }
       })
       .catch(() => {});
@@ -352,8 +371,10 @@ const PhieuNhapPage = () => {
       await phieuNhapService.approvePhieuNhap(id);
       messageApi.success("Đã duyệt!");
       fetchData(pagination.current, pagination.pageSize, filter);
-    } catch (e) {
-      messageApi.error("Lỗi duyệt!");
+    } catch (error) {
+      const errorMessage =
+        error.response?.data?.message || error.response?.data || "Lỗi duyệt";
+      messageApi.error(errorMessage);
     }
   };
   const handleReject = async (id) => {
@@ -365,44 +386,57 @@ const PhieuNhapPage = () => {
       messageApi.error("Lỗi hủy!");
     }
   };
+  const disabledDate = (current) => {
+    return current && current < dayjs().startOf("day");
+  };
 
-  // --- CẤU HÌNH CỘT ---
+  // --- [3] CẤU HÌNH CỘT RESPONSIVE ---
+  // Logic: screens.lg (PC) thì ghim cột. Mobile thì thả lỏng.
   const columns = [
     {
       title: "Ngày Lập",
       dataIndex: "ngayLapPhieu",
-      width: "15%",
+      width: 150,
+      fixed: screens.lg ? "left" : null, // Ghim trái trên PC
       render: (v) => dayjs(v).format("DD/MM/YYYY HH:mm"),
     },
-    { title: "Chứng Từ", dataIndex: "chungTu", width: "10%" },
+    {
+      title: "Chứng Từ",
+      dataIndex: "chungTu",
+      width: 120,
+      fixed: screens.lg ? "left" : null, // Ghim trái trên PC
+    },
     {
       title: "Trạng Thái",
       dataIndex: "trangThai",
-      width: "10%",
+      width: 120,
       render: renderStatus,
     },
     {
       title: "Tổng Tiền",
       dataIndex: "tongTien",
-      width: "12%",
+      width: 150,
+      align: "right",
       render: (v) => Number(v || 0).toLocaleString() + " đ",
     },
     {
       title: "Nhà Cung Cấp",
       dataIndex: "maNCC",
-      width: "20%",
+      width: 200,
       render: (id) => listNhaCungCap.find((n) => n.maNCC === id)?.tenNCC || id,
     },
     {
       title: "Người Lập",
       dataIndex: "nguoiLap",
-      width: "10%",
+      width: 150,
       render: (id) => getUserName(id),
     },
     {
       title: "Hành động",
       key: "action",
-      width: "20%",
+      width: 200, // Tăng width để chứa đủ các nút
+      fixed: screens.lg ? "right" : null, // Ghim phải trên PC
+      align: "center",
       render: (_, record) => {
         const isChoDuyet = record.trangThai === 1;
         const allowEdit = isEditable(record);
@@ -418,6 +452,7 @@ const PhieuNhapPage = () => {
             <Tooltip title="Xem chi tiết">
               <Button
                 icon={<EyeOutlined />}
+                size="small"
                 onClick={() => handleViewDetail(record)}
               />
             </Tooltip>
@@ -425,33 +460,37 @@ const PhieuNhapPage = () => {
               <Tooltip title="Sửa phiếu">
                 <Button
                   icon={<EditOutlined />}
+                  size="small"
                   onClick={() => handleEdit(record)}
                 />
               </Tooltip>
             )}
             {isChoDuyet && allowDelete && (
-              <Tooltip title="Xóa phiếu ">
+              <Tooltip title="Xóa phiếu">
                 <Button
                   icon={<DeleteOutlined />}
                   danger
+                  size="small"
                   onClick={() => handleDelete(record.maPhieuNhap)}
                 />
               </Tooltip>
             )}
             {isChoDuyet && allowApprove && (
-              <Tooltip title="Duyệt phiếu ">
+              <Tooltip title="Duyệt phiếu">
                 <Button
                   icon={<CheckCircleOutlined />}
                   style={{ color: "green", borderColor: "green" }}
+                  size="small"
                   onClick={() => handleApprove(record.maPhieuNhap)}
                 />
               </Tooltip>
             )}
             {isChoDuyet && allowCancel && (
-              <Tooltip title="Hủy phiếu ">
+              <Tooltip title="Hủy phiếu">
                 <Button
                   icon={<CloseCircleOutlined />}
                   danger
+                  size="small"
                   onClick={() => handleReject(record.maPhieuNhap)}
                 />
               </Tooltip>
@@ -475,12 +514,9 @@ const PhieuNhapPage = () => {
     );
   }
 
-  // --- [THÊM] LOGIC LỌC SẢN PHẨM THEO NCC ---
   // Lọc listSanPham dựa trên selectedNCC
   const filteredProducts = listSanPham.filter((sp) => {
-    if (!selectedNCC) return false; // Chưa chọn NCC thì không hiện SP nào (hoặc hiện hết tùy logic, ở đây chọn cách ẩn để bắt buộc chọn NCC)
-
-    // Kiểm tra trong danhSachNCC (Array Object) hoặc danhSachMaNCC (Array ID)
+    if (!selectedNCC) return false;
     const hasInListObject =
       sp.danhSachNCC && sp.danhSachNCC.some((n) => n.maNCC === selectedNCC);
     const hasInListId =
@@ -490,15 +526,21 @@ const PhieuNhapPage = () => {
   });
 
   return (
-    <div>
+    <div style={{ padding: "0 10px" }}>
+      {" "}
+      {/* Padding nhỏ cho mobile */}
       {contextHolder}
       <Card
         style={{ marginBottom: 16 }}
         bodyStyle={{ padding: "16px" }}
       >
-        {/* BỘ LỌC */}
+        {/* BỘ LỌC RESPONSIVE - CHỈNH SỬA: Mỗi ô 1 dòng trên Mobile */}
         <Row gutter={[16, 16]}>
-          <Col span={4}>
+          {/* 1. Mã chứng từ: Giảm xuống 3 */}
+          <Col
+            xs={24}
+            md={3}
+          >
             <div style={{ fontWeight: 500 }}>Mã chứng từ</div>
             <Input
               prefix={<SearchOutlined />}
@@ -506,13 +548,20 @@ const PhieuNhapPage = () => {
               onChange={(e) =>
                 setFilter({ ...filter, chungTu: e.target.value })
               }
+              placeholder="Tìm mã..."
             />
           </Col>
-          <Col span={4}>
+
+          {/* 2. Trạng thái: Giảm xuống 3 */}
+          <Col
+            xs={24}
+            md={3}
+          >
             <div style={{ fontWeight: 500 }}>Trạng thái</div>
             <Select
               style={{ width: "100%" }}
               allowClear
+              placeholder="Chọn trạng thái"
               value={filter.trangThai}
               onChange={(v) => setFilter({ ...filter, trangThai: v })}
             >
@@ -521,12 +570,18 @@ const PhieuNhapPage = () => {
               <Option value={3}>Không duyệt</Option>
             </Select>
           </Col>
-          <Col span={4}>
+
+          {/* 3. Kho nhập: Giữ 4 */}
+          <Col
+            xs={24}
+            md={4}
+          >
             <div style={{ fontWeight: 500 }}>Kho nhập</div>
             <Select
               style={{ width: "100%" }}
               allowClear
               showSearch
+              placeholder="Chọn kho"
               optionFilterProp="children"
               value={filter.maKho}
               onChange={(v) => setFilter({ ...filter, maKho: v })}
@@ -541,12 +596,18 @@ const PhieuNhapPage = () => {
               ))}
             </Select>
           </Col>
-          <Col span={4}>
+
+          {/* 4. Nhà cung cấp: Giữ 4 */}
+          <Col
+            xs={24}
+            md={4}
+          >
             <div style={{ fontWeight: 500 }}>Nhà cung cấp</div>
             <Select
               style={{ width: "100%" }}
               allowClear
               showSearch
+              placeholder="Chọn NCC"
               optionFilterProp="children"
               value={filter.maNCC}
               onChange={(v) => setFilter({ ...filter, maNCC: v })}
@@ -561,7 +622,12 @@ const PhieuNhapPage = () => {
               ))}
             </Select>
           </Col>
-          <Col span={5}>
+
+          {/* 5. Ngày lập: Tăng lên 6 để đủ chỗ hiển thị ngày */}
+          <Col
+            xs={24}
+            md={6}
+          >
             <div style={{ fontWeight: 500 }}>Ngày lập</div>
             <RangePicker
               style={{ width: "100%" }}
@@ -570,32 +636,38 @@ const PhieuNhapPage = () => {
               onChange={(d) => setFilter({ ...filter, dateRange: d })}
             />
           </Col>
+
+          {/* 6. Nút bấm: Tăng lên 4 để nút không bị dính vào DatePicker */}
           <Col
-            span={3}
+            xs={24}
+            md={4}
             style={{
-              textAlign: "right",
+              textAlign: screens.md ? "right" : "left",
               display: "flex",
               alignItems: "flex-end",
-              justifyContent: "flex-end",
+              justifyContent: screens.md ? "flex-end" : "flex-start",
             }}
           >
-            <Space>
+            <Space style={{ width: screens.md ? "auto" : "100%" }}>
               <Button
                 type="primary"
                 icon={<SearchOutlined />}
                 onClick={handleSearch}
+                block={!screens.md}
               >
                 Tìm
               </Button>
               <Button
                 icon={<ClearOutlined />}
                 onClick={handleResetFilter}
-              />
+                block={!screens.md}
+              >
+                Xóa
+              </Button>
             </Space>
           </Col>
         </Row>
       </Card>
-
       <Space style={{ marginBottom: 16 }}>
         {(isAdmin || checkPerm(PERM_CREATE)) && (
           <Button
@@ -615,25 +687,27 @@ const PhieuNhapPage = () => {
           Tải lại
         </Button>
       </Space>
-
       <Table
         className="fixed-height-table"
         columns={columns}
         dataSource={listData}
         loading={loading}
         rowKey="maPhieuNhap"
-        pagination={pagination}
+        pagination={{ ...pagination, size: "small" }}
         onChange={handleTableChange}
-        scroll={{ x: "max-content" }}
+        // [QUAN TRỌNG] Cuộn ngang
+        scroll={{ x: 1200 }}
+        size="small"
       />
-
       {/* MODAL THÊM / SỬA */}
       <Modal
         title={editingRecord ? "Sửa Phiếu Nhập" : "Tạo Phiếu Nhập"}
         open={isModalVisible}
         onOk={handleOk}
         onCancel={() => setIsModalVisible(false)}
-        width={1000}
+        // Responsive Modal Width
+        width={screens.md ? 1100 : "100%"}
+        style={{ top: 20 }}
       >
         <Form
           form={form}
@@ -645,13 +719,12 @@ const PhieuNhapPage = () => {
               label="Nhà Cung Cấp"
               rules={[{ required: true, message: "Vui lòng chọn NCC trước" }]}
             >
-              {/* [CẬP NHẬT] Gắn hàm handleNCCChange */}
               <Select
                 style={{ width: 250 }}
                 showSearch
                 optionFilterProp="children"
                 onChange={handleNCCChange}
-                disabled={!!editingRecord} // Nếu muốn chặn sửa NCC khi đã tạo phiếu (logic thường gặp)
+                disabled={!!editingRecord}
               >
                 {listNhaCungCap.map((n) => (
                   <Option
@@ -692,46 +765,62 @@ const PhieuNhapPage = () => {
             </Form.Item>
           </Space>
 
-          <Row
-            gutter={8}
-            style={{
-              background: "#f5f5f5",
-              padding: "5px 0",
-              textAlign: "center",
-              fontWeight: "bold",
-            }}
-          >
-            <Col span={10}>Sản phẩm</Col>
-            <Col span={5}>Số lượng</Col>
-            <Col span={6}>Đơn giá</Col>
-            <Col span={2}>Xóa</Col>
-          </Row>
+          {/* --- HEADER CỦA FORM LIST (RESPONSIVE) --- */}
+          {/* Trên Mobile: Ẩn header, hiển thị label trong từng item */}
+          {screens.md && (
+            <Row
+              gutter={8}
+              style={{
+                background: "#f5f5f5",
+                padding: "5px 0",
+                textAlign: "center",
+                fontWeight: "bold",
+                marginTop: 10,
+              }}
+            >
+              <Col span={6}>Sản phẩm</Col>
+              <Col span={4}>Số lô</Col>
+              <Col span={4}>Hạn SD</Col>
+              <Col span={3}>Số lượng</Col>
+              <Col span={5}>Đơn giá</Col>
+              <Col span={2}>Xóa</Col>
+            </Row>
+          )}
+
           <Form.List name="chiTiet">
             {(fields, { add, remove }) => (
               <>
                 {fields.map(({ key, name, ...restField }) => (
                   <Row
                     key={key}
-                    gutter={8}
-                    style={{ marginTop: 10 }}
+                    gutter={[8, 8]} // Thêm gutter dọc cho mobile
+                    style={{
+                      marginTop: 10,
+                      borderBottom: !screens.md ? "1px solid #eee" : "none", // Gạch ngang phân cách trên mobile
+                      paddingBottom: !screens.md ? 10 : 0,
+                    }}
                     align="middle"
                   >
-                    <Col span={10}>
+                    {/* 1. CỘT SẢN PHẨM */}
+                    <Col
+                      xs={24}
+                      md={6}
+                    >
                       <Form.Item
                         {...restField}
                         name={[name, "maSP"]}
-                        rules={[{ required: true }]}
+                        label={!screens.md ? "Sản phẩm" : null} // Hiện label trên mobile
+                        rules={[{ required: true, message: "Chọn SP" }]}
                         style={{ marginBottom: 0 }}
                       >
-                        {/* [CẬP NHẬT] Dropdown Sản phẩm sử dụng danh sách filteredProducts */}
                         <Select
                           showSearch
                           optionFilterProp="children"
                           style={{ width: "100%" }}
                           placeholder={
-                            selectedNCC ? "Chọn SP" : "Vui lòng chọn NCC trước"
+                            selectedNCC ? "Chọn SP" : "Chọn NCC trước"
                           }
-                          disabled={!selectedNCC} // Khóa nếu chưa chọn NCC
+                          disabled={!selectedNCC}
                         >
                           {filteredProducts.map((s) => (
                             <Option
@@ -744,29 +833,79 @@ const PhieuNhapPage = () => {
                         </Select>
                       </Form.Item>
                     </Col>
-                    <Col span={5}>
+
+                    {/* 2. CỘT SỐ LÔ */}
+                    <Col
+                      xs={12}
+                      md={4}
+                    >
+                      <Form.Item
+                        {...restField}
+                        name={[name, "soLo"]}
+                        label={!screens.md ? "Số lô" : null}
+                        rules={[{ required: true, message: "Nhập lô" }]}
+                        style={{ marginBottom: 0 }}
+                      >
+                        <Input placeholder="Số lô" />
+                      </Form.Item>
+                    </Col>
+
+                    {/* 3. CỘT HẠN SỬ DỤNG */}
+                    <Col
+                      xs={12}
+                      md={4}
+                    >
+                      <Form.Item
+                        {...restField}
+                        name={[name, "ngayHetHan"]}
+                        label={!screens.md ? "Hạn SD" : null}
+                        style={{ marginBottom: 0 }}
+                      >
+                        <DatePicker
+                          format="DD/MM/YYYY"
+                          placeholder="Hạn SD"
+                          style={{ width: "100%" }}
+                          disabledDate={disabledDate}
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    {/* 4. CỘT SỐ LƯỢNG */}
+                    <Col
+                      xs={12}
+                      md={3}
+                    >
                       <Form.Item
                         {...restField}
                         name={[name, "soLuong"]}
-                        rules={[{ required: true }]}
+                        label={!screens.md ? "Số lượng" : null}
+                        rules={[{ required: true, message: "Nhập SL" }]}
                         style={{ marginBottom: 0 }}
                       >
                         <InputNumber
                           min={1}
                           style={{ width: "100%" }}
+                          placeholder="SL"
                         />
                       </Form.Item>
                     </Col>
-                    <Col span={6}>
+
+                    {/* 5. CỘT ĐƠN GIÁ */}
+                    <Col
+                      xs={12}
+                      md={5}
+                    >
                       <Form.Item
                         {...restField}
                         name={[name, "donGia"]}
-                        rules={[{ required: true }]}
+                        label={!screens.md ? "Đơn giá" : null}
+                        rules={[{ required: true, message: "Nhập giá" }]}
                         style={{ marginBottom: 0 }}
                       >
                         <InputNumber
                           min={0}
                           style={{ width: "100%" }}
+                          placeholder="Đơn giá"
                           formatter={(v) =>
                             `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
                           }
@@ -774,17 +913,33 @@ const PhieuNhapPage = () => {
                         />
                       </Form.Item>
                     </Col>
+
+                    {/* 6. CỘT XÓA */}
                     <Col
-                      span={2}
-                      style={{ textAlign: "center" }}
+                      xs={24}
+                      md={2}
+                      style={{
+                        textAlign: !screens.md ? "right" : "center",
+                        marginTop: !screens.md ? 5 : 0,
+                      }}
                     >
+                      {!screens.md && (
+                        <span style={{ marginRight: 5, color: "#999" }}>
+                          Xóa dòng này:{" "}
+                        </span>
+                      )}
                       <MinusCircleOutlined
                         onClick={() => remove(name)}
-                        style={{ color: "red", cursor: "pointer" }}
+                        style={{
+                          color: "red",
+                          cursor: "pointer",
+                          fontSize: 18,
+                        }}
                       />
                     </Col>
                   </Row>
                 ))}
+
                 <Form.Item style={{ marginTop: 10 }}>
                   <Button
                     type="dashed"
@@ -801,7 +956,6 @@ const PhieuNhapPage = () => {
           </Form.List>
         </Form>
       </Modal>
-
       {/* MODAL XÓA */}
       <Modal
         title="Xác nhận xóa"
@@ -814,20 +968,21 @@ const PhieuNhapPage = () => {
       >
         <p>Bạn có chắc muốn xóa phiếu nhập này?</p>
       </Modal>
-
       {/* MODAL CHI TIẾT */}
       <Modal
         title="Chi tiết Phiếu Nhập"
         open={isDetailModalOpen}
         onCancel={() => setIsDetailModalOpen(false)}
         footer={null}
-        width={800}
+        width={screens.md ? 800 : "100%"} // Responsive detail modal
+        style={{ top: 20 }}
       >
         {viewingPhieuNhap && (
           <div>
             <Descriptions
               bordered
-              column={2}
+              column={screens.md ? 2 : 1} // Mobile 1 cột, PC 2 cột
+              size="small"
             >
               <Descriptions.Item label="Mã Phiếu">
                 {viewingPhieuNhap.maPhieuNhap}
@@ -859,21 +1014,35 @@ const PhieuNhapPage = () => {
               dataSource={viewingPhieuNhap.chiTiet || []}
               pagination={false}
               rowKey="maSP"
+              scroll={{ x: 600 }} // Cuộn ngang cho bảng chi tiết nhỏ
+              size="small"
               columns={[
                 {
-                  title: "Tên SP",
+                  title: "Tên sản phẩm",
                   dataIndex: "maSP",
+                  width: 150,
                   render: (id) =>
                     listSanPham.find((s) => s.maSP === id)?.tenSP || id,
                 },
-                { title: "SL", dataIndex: "soLuong" },
+                { title: "Số Lượng", dataIndex: "soLuong", width: 80 },
+                { title: "Số lô", dataIndex: "soLo", width: 100 },
+                {
+                  title: "Ngày hết hạn",
+                  dataIndex: "ngayHetHan",
+                  width: 120,
+                  render: (text) => {
+                    return text ? dayjs(text).format("DD/MM/YYYY") : "";
+                  },
+                },
                 {
                   title: "Đơn giá",
                   dataIndex: "donGia",
+                  width: 100,
                   render: (v) => Number(v).toLocaleString(),
                 },
                 {
                   title: "Thành tiền",
+                  width: 120,
                   render: (_, r) =>
                     Number(r.soLuong * r.donGia).toLocaleString(),
                 },
