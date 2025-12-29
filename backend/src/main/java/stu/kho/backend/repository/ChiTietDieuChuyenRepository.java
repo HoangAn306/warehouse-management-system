@@ -5,7 +5,7 @@ import stu.kho.backend.entity.ChiTietDieuChuyen;
 import java.util.List;
 
 public interface ChiTietDieuChuyenRepository {
-    void save(ChiTietDieuChuyen ct);
+    int save(ChiTietDieuChuyen ct);
 
     List<ChiTietDieuChuyen> findByMaPhieuDC(Integer maPhieuDC);
 
