@@ -2,6 +2,7 @@ package stu.kho.backend.dto;
 
 import lombok.Data;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -18,5 +19,7 @@ public class PhieuDieuChuyenRequest {
     public static class ChiTietDieuChuyenRequest {
         private Integer maSP;
         private Integer soLuong;
+        private String soLo;
+        private LocalDate ngayHetHan;
     }
 }
