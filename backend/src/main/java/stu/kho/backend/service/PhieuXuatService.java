@@ -14,7 +14,6 @@ import stu.kho.backend.repository.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -33,7 +32,6 @@ public class PhieuXuatService {
     private final SanPhamRepository sanPhamRepository;
     private final KhachHangRepository khachHangRepository;
     private final JdbcTemplate jdbcTemplate;
-
 
     public PhieuXuatService(PhieuXuatRepository phieuXuatRepository,
                             ChiTietPhieuXuatRepository chiTietPhieuXuatRepository,
@@ -54,17 +52,16 @@ public class PhieuXuatService {
     }
 
     // =================================================================
-    // 1. CREATE (Tạo phiếu - SỬA LỖI CHECK NULL)
+    // 1. CREATE (Tạo phiếu - ĐÃ SỬA LOGIC PENDING)
     // =================================================================
     @Transactional
     public PhieuXuatHang createPhieuXuat(PhieuXuatRequest request, String tenNguoiLap) {
         NguoiDung nguoiLap = nguoiDungRepository.findByTenDangNhap(tenNguoiLap)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng."));
 
-        // 1. Kiểm tra sơ bộ tồn kho
-        // [FIX]: Chỉ kiểm tra nếu người dùng CÓ nhập số lô. Nếu để null (FEFO) thì bỏ qua.
+        // 1. Kiểm tra tồn kho (Chỉ check nếu có nhập Lô cụ thể)
         for (ChiTietPhieuXuatRequest item : request.getChiTiet()) {
-            if (item.getSoLo() != null && !item.getSoLo().isEmpty()) {
+            if (item.getSoLo() != null && !item.getSoLo().trim().isEmpty()) {
                 checkTonKhoLoHang(request.getMaKho(), item.getMaSP(), item.getSoLo(), item.getSoLuong());
             }
         }
@@ -96,8 +93,12 @@ public class PhieuXuatService {
             chiTiet.setDonGia(ctRequest.getDonGia());
             chiTiet.setThanhTien(ctRequest.getDonGia().multiply(new BigDecimal(ctRequest.getSoLuong())));
 
-            // Lưu ý: Nếu soLo là null, vẫn lưu null vào DB (để lúc duyệt sẽ tự tìm lô)
-            chiTiet.setSoLo(ctRequest.getSoLo());
+            // [QUAN TRỌNG] Xử lý logic PENDING để tránh lỗi khóa chính DB
+            if (ctRequest.getSoLo() == null || ctRequest.getSoLo().trim().isEmpty()) {
+                chiTiet.setSoLo("PENDING"); // Gán giá trị tạm
+            } else {
+                chiTiet.setSoLo(ctRequest.getSoLo());
+            }
 
             chiTietPhieuXuatRepository.save(chiTiet);
         }
@@ -107,11 +108,10 @@ public class PhieuXuatService {
     }
 
     // =================================================================
-    // 2. APPROVE (Duyệt - CÓ LOGIC FEFO)
+    // 2. APPROVE (Duyệt - FEFO & XÓA PENDING)
     // =================================================================
     @Transactional
     public PhieuXuatHang approvePhieuXuat(Integer id, String tenNguoiDuyet) {
-        // 1. Validate người duyệt và phiếu
         NguoiDung nguoiDuyet = nguoiDungRepository.findByTenDangNhap(tenNguoiDuyet)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
@@ -122,36 +122,27 @@ public class PhieuXuatService {
         }
 
         LocalDate homNay = LocalDate.now();
-
-        // Danh sách chi tiết ban đầu
         List<ChiTietPhieuXuat> listChiTietCu = phieuXuat.getChiTiet();
 
-        // 2. DUYỆT TỪNG DÒNG CHI TIẾT
         for (ChiTietPhieuXuat ct : listChiTietCu) {
-
-            // === TRƯỜNG HỢP A: NGƯỜI DÙNG ĐÃ CHỌN SỐ LÔ ===
-            if (ct.getSoLo() != null && !ct.getSoLo().isEmpty()) {
+            // Trường hợp A: Đã có số lô cụ thể (Khác PENDING và khác null)
+            if (ct.getSoLo() != null && !ct.getSoLo().equals("PENDING") && !ct.getSoLo().isEmpty()) {
                 validateAndDeductSpecificBatch(phieuXuat.getMaKho(), ct, homNay);
             }
-
-            // === TRƯỜNG HỢP B: NGƯỜI DÙNG KHÔNG BIẾT SỐ LÔ (AUTO PICK FEFO) ===
+            // Trường hợp B: Chưa có số lô (PENDING) -> Auto FEFO
             else {
-                // Tự động tìm lô và trừ kho (có thể tách thành nhiều dòng lô khác nhau)
                 autoAllocateBatches(phieuXuat, ct);
 
-                // Sau khi đã phân bổ xong, xóa dòng yêu cầu chung chung (dòng null) khỏi DB
+                // [QUAN TRỌNG] Xóa dòng 'PENDING' sau khi đã tách lô
                 deleteOldGenericItem(ct.getMaPhieuXuat(), ct.getMaSP());
             }
         }
 
-        // 3. Cập nhật trạng thái phiếu
         phieuXuat.setTrangThai(STATUS_DA_DUYET);
         phieuXuat.setNguoiDuyet(nguoiDuyet.getMaNguoiDung());
         phieuXuatRepository.update(phieuXuat);
 
         logActivity(nguoiDuyet.getMaNguoiDung(), "Duyệt Phiếu Xuất #" + id);
-
-        // Return lại phiếu mới nhất (để thấy được các lô đã tự động điền)
         return getPhieuXuatById(id);
     }
 
@@ -168,9 +159,8 @@ public class PhieuXuatService {
         if (phieuXuat.getTrangThai() == STATUS_DA_HUY) {
             throw new RuntimeException("Phiếu này đã bị hủy trước đó.");
         }
-
         if (phieuXuat.getTrangThai() == STATUS_DA_DUYET) {
-            throw new RuntimeException("Không thể hủy phiếu đã duyệt (Hàng đã xuất).");
+            throw new RuntimeException("Không thể hủy phiếu đã duyệt.");
         }
 
         phieuXuat.setTrangThai(STATUS_DA_HUY);
@@ -182,7 +172,7 @@ public class PhieuXuatService {
     }
 
     // =================================================================
-    // 4. UPDATE (Sửa phiếu xuất)
+    // 4. UPDATE (Sửa phiếu)
     // =================================================================
     @Transactional
     public PhieuXuatHang updatePhieuXuat(Integer maPhieuXuat, PhieuXuatRequest request, String tenNguoiSua) {
@@ -191,28 +181,17 @@ public class PhieuXuatService {
 
         PhieuXuatHang phieuXuatCu = getPhieuXuatById(maPhieuXuat);
 
-        if (phieuXuatCu.getTrangThai() == STATUS_DA_HUY) {
-            throw new RuntimeException("Không thể sửa phiếu đã hủy.");
-        }
+        if (phieuXuatCu.getTrangThai() == STATUS_DA_HUY) throw new RuntimeException("Không thể sửa phiếu đã hủy.");
+        if (phieuXuatCu.getNgayLapPhieu().isBefore(LocalDateTime.now().minusDays(30))) throw new RuntimeException("Không thể sửa phiếu quá 30 ngày.");
 
-        LocalDateTime limitDate = LocalDateTime.now().minusDays(30);
-        if (phieuXuatCu.getNgayLapPhieu().isBefore(limitDate)) {
-            throw new RuntimeException("Không thể sửa phiếu đã được tạo quá 30 ngày.");
-        }
-
-        // Nếu phiếu ĐÃ DUYỆT -> Cần Rollback kho trước khi sửa
+        // Nếu ĐÃ DUYỆT -> Rollback kho
         if (phieuXuatCu.getTrangThai() == STATUS_DA_DUYET) {
             boolean hasPerm = SecurityContextHolder.getContext().getAuthentication().getAuthorities().stream()
                     .anyMatch(a -> a.getAuthority().equals("PERM_PHIEUXUAT_EDIT_APPROVED"));
+            if (!hasPerm) throw new RuntimeException("Bạn không có quyền sửa phiếu xuất đã duyệt.");
 
-            if (!hasPerm) {
-                throw new RuntimeException("Bạn không có quyền sửa phiếu xuất đã duyệt.");
-            }
-
-            // ROLLBACK: Cộng lại hàng vào đúng Lô cũ
             for (ChiTietPhieuXuat ctCu : phieuXuatCu.getChiTiet()) {
-                // Nếu ctCu.getSoLo() là null (lỗi dữ liệu cũ) thì bỏ qua hoặc gán mặc định
-                if(ctCu.getSoLo() != null) {
+                if(ctCu.getSoLo() != null && !ctCu.getSoLo().equals("PENDING")) {
                     capNhatTonKhoTheoLo(phieuXuatCu.getMaKho(), ctCu.getMaSP(), ctCu.getSoLo(), ctCu.getSoLuong());
                 }
             }
@@ -221,11 +200,10 @@ public class PhieuXuatService {
         // Xóa chi tiết cũ
         chiTietPhieuXuatRepository.deleteByMaPhieuXuat(maPhieuXuat);
 
-        // Update thông tin phiếu
+        // Update thông tin chính
         BigDecimal tongTienMoi = request.getChiTiet().stream()
                 .map(ct -> ct.getDonGia().multiply(new BigDecimal(ct.getSoLuong())))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-
         phieuXuatCu.setMaKH(request.getMaKH());
         phieuXuatCu.setMaKho(request.getMaKho());
         phieuXuatCu.setChungTu(request.getChungTu());
@@ -234,7 +212,6 @@ public class PhieuXuatService {
 
         // Thêm chi tiết MỚI
         for (ChiTietPhieuXuatRequest ctRequest : request.getChiTiet()) {
-            // [FIX] Chỉ check tồn kho nếu CÓ nhập số lô
             if (ctRequest.getSoLo() != null && !ctRequest.getSoLo().isEmpty()) {
                 checkTonKhoLoHang(request.getMaKho(), ctRequest.getMaSP(), ctRequest.getSoLo(), ctRequest.getSoLuong());
             }
@@ -245,15 +222,19 @@ public class PhieuXuatService {
             chiTietMoi.setSoLuong(ctRequest.getSoLuong());
             chiTietMoi.setDonGia(ctRequest.getDonGia());
             chiTietMoi.setThanhTien(ctRequest.getDonGia().multiply(new BigDecimal(ctRequest.getSoLuong())));
-            chiTietMoi.setSoLo(ctRequest.getSoLo());
+
+            // Xử lý PENDING khi update
+            if (ctRequest.getSoLo() == null || ctRequest.getSoLo().trim().isEmpty()) {
+                chiTietMoi.setSoLo("PENDING");
+            } else {
+                chiTietMoi.setSoLo(ctRequest.getSoLo());
+            }
 
             chiTietPhieuXuatRepository.save(chiTietMoi);
 
-            // Nếu đang là Đã Duyệt -> Trừ kho theo Lô mới
-            // (Lưu ý: Nếu soLo là null ở đây thì logic này sẽ lỗi, nên với phiếu Đã Duyệt bắt buộc phải chọn lô
-            // hoặc phải chạy lại logic FEFO. Để đơn giản, khi sửa phiếu Đã Duyệt thì bắt buộc chọn lô)
+            // Nếu đang là Đã Duyệt -> Trừ kho lại
             if (phieuXuatCu.getTrangThai() == STATUS_DA_DUYET) {
-                if (ctRequest.getSoLo() != null) {
+                if (ctRequest.getSoLo() != null && !ctRequest.getSoLo().equals("PENDING")) {
                     capNhatTonKhoTheoLo(request.getMaKho(), ctRequest.getMaSP(), ctRequest.getSoLo(), -ctRequest.getSoLuong());
                 } else {
                     throw new RuntimeException("Khi sửa phiếu ĐÃ DUYỆT, bạn phải chọn Số Lô cụ thể.");
@@ -266,130 +247,90 @@ public class PhieuXuatService {
     }
 
     // =================================================================
-    // 5. DELETE (Xóa phiếu xuất)
+    // 5. DELETE (Xóa phiếu)
     // =================================================================
     @Transactional
     public void deletePhieuXuat(Integer maPhieuXuat, String tenNguoiXoa) {
         NguoiDung nguoiXoa = nguoiDungRepository.findByTenDangNhap(tenNguoiXoa)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng."));
-
+                .orElseThrow(() -> new RuntimeException("User not found"));
         PhieuXuatHang phieuXuat = getPhieuXuatById(maPhieuXuat);
 
-        // Nếu phiếu ĐÃ DUYỆT -> Hoàn trả tồn kho (đúng lô)
         if (phieuXuat.getTrangThai() == STATUS_DA_DUYET) {
             for (ChiTietPhieuXuat ct : phieuXuat.getChiTiet()) {
-                if(ct.getSoLo() != null) {
+                if(ct.getSoLo() != null && !ct.getSoLo().equals("PENDING")) {
                     capNhatTonKhoTheoLo(phieuXuat.getMaKho(), ct.getMaSP(), ct.getSoLo(), ct.getSoLuong());
                 }
             }
         }
-
         chiTietPhieuXuatRepository.deleteByMaPhieuXuat(maPhieuXuat);
         phieuXuatRepository.deleteById(maPhieuXuat);
-
         logActivity(nguoiXoa.getMaNguoiDung(), "Xóa Phiếu Xuất Hàng #" + maPhieuXuat);
     }
 
     // =================================================================
-    // CÁC HÀM HỖ TRỢ & LOGIC KHO (PRIVATE)
+    // HELPER FUNCTIONS
     // =================================================================
 
-    // Kiểm tra tồn kho của 1 lô cụ thể
     private void checkTonKhoLoHang(Integer maKho, Integer maSP, String soLo, Integer soLuongCan) {
         String sql = "SELECT SoLuongTon FROM chitietkho WHERE MaKho = ? AND MaSP = ? AND SoLo = ?";
         try {
             Integer ton = jdbcTemplate.queryForObject(sql, Integer.class, maKho, maSP, soLo);
-            if (ton == null || ton < soLuongCan) {
-                throw new RuntimeException("Lô hàng " + soLo + " không đủ số lượng để xuất.");
-            }
+            if (ton == null || ton < soLuongCan) throw new RuntimeException("Lô " + soLo + " không đủ số lượng.");
         } catch (EmptyResultDataAccessException e) {
-            throw new RuntimeException("Lô hàng " + soLo + " không tồn tại trong kho này.");
+            throw new RuntimeException("Lô " + soLo + " không tồn tại trong kho.");
         }
     }
 
-    // Cập nhật tồn kho (Trừ hoặc Cộng)
     private void capNhatTonKhoTheoLo(Integer maKho, Integer maSP, String soLo, Integer soLuongThayDoi) {
-        // 1. Cập nhật bảng ChiTietKho (Theo Lô)
         String sqlUpdateKho = "UPDATE chitietkho SET SoLuongTon = SoLuongTon + ? WHERE MaKho = ? AND MaSP = ? AND SoLo = ?";
         int rows = jdbcTemplate.update(sqlUpdateKho, soLuongThayDoi, maKho, maSP, soLo);
+        if (rows == 0 && soLuongThayDoi < 0) throw new RuntimeException("Lỗi: Không tìm thấy lô " + soLo + " để trừ kho!");
 
-        if (rows == 0 && soLuongThayDoi < 0) {
-            throw new RuntimeException("Lỗi nghiêm trọng: Không tìm thấy lô hàng " + soLo + " để trừ kho!");
-        }
-
-        // 2. Cập nhật bảng SanPham (Tổng tồn kho toàn hệ thống)
         SanPham sp = sanPhamRepository.findById(maSP).orElseThrow();
-        int tongHienTai = (sp.getSoLuongTon() == null) ? 0 : sp.getSoLuongTon();
-        sp.setSoLuongTon(tongHienTai + soLuongThayDoi);
+        int tong = (sp.getSoLuongTon() == null ? 0 : sp.getSoLuongTon()) + soLuongThayDoi;
+        sp.setSoLuongTon(tong);
         sanPhamRepository.update(sp);
     }
 
-    // Logic kiểm tra và trừ kho cho lô CỤ THỂ
     private void validateAndDeductSpecificBatch(Integer maKho, ChiTietPhieuXuat ct, LocalDate homNay) {
         String sqlCheck = "SELECT SoLuongTon, NgayHetHan FROM chitietkho WHERE MaKho = ? AND MaSP = ? AND SoLo = ?";
-
         try {
             Map<String, Object> info = jdbcTemplate.queryForMap(sqlCheck, maKho, ct.getMaSP(), ct.getSoLo());
-
-            int tonHienTai = (Integer) info.get("SoLuongTon");
+            int ton = (Integer) info.get("SoLuongTon");
             java.sql.Date sqlDate = (java.sql.Date) info.get("NgayHetHan");
-            LocalDate ngayHetHan = (sqlDate != null) ? sqlDate.toLocalDate() : null;
+            LocalDate han = (sqlDate != null) ? sqlDate.toLocalDate() : null;
 
-            // Check 1: Đủ hàng không?
-            if (tonHienTai < ct.getSoLuong()) {
-                throw new RuntimeException("Sản phẩm " + ct.getMaSP() + " lô " + ct.getSoLo() +
-                        " không đủ hàng. Tồn: " + tonHienTai + ", Cần: " + ct.getSoLuong());
-            }
+            if (ton < ct.getSoLuong()) throw new RuntimeException("Lô " + ct.getSoLo() + " thiếu hàng.");
+            if (han != null && han.isBefore(homNay)) throw new RuntimeException("CHẶN: Lô " + ct.getSoLo() + " đã hết hạn.");
 
-            // Check 2: Hết hạn chưa?
-            if (ngayHetHan != null && ngayHetHan.isBefore(homNay)) {
-                throw new RuntimeException("CHẶN XUẤT: Lô hàng " + ct.getSoLo() + " của SP " + ct.getMaSP() +
-                        " đã hết hạn ngày " + ngayHetHan + ".");
-            }
-
-            // Hợp lệ -> Trừ kho
             capNhatTonKhoTheoLo(maKho, ct.getMaSP(), ct.getSoLo(), -ct.getSoLuong());
-
         } catch (EmptyResultDataAccessException e) {
-            throw new RuntimeException("Không tìm thấy lô hàng " + ct.getSoLo() + " của SP " + ct.getMaSP() + " trong kho.");
+            throw new RuntimeException("Lô " + ct.getSoLo() + " không tồn tại.");
         }
     }
 
-    // Logic tìm lô tự động (FEFO) và trừ kho
     private void autoAllocateBatches(PhieuXuatHang phieu, ChiTietPhieuXuat yeuCau) {
         int soLuongCan = yeuCau.getSoLuong();
-
-        // 1. Tìm các lô khả dụng (Còn hạn, Còn tồn, Xếp theo hạn dùng tăng dần)
         List<Map<String, Object>> batches = findBatchesForAutoPick(phieu.getMaKho(), yeuCau.getMaSP());
 
-        int tongTonKhaDung = batches.stream().mapToInt(b -> (int)b.get("SoLuongTon")).sum();
-        if (tongTonKhaDung < soLuongCan) {
-            throw new RuntimeException("Sản phẩm " + yeuCau.getMaSP() + " (Auto): Tổng tồn kho khả dụng chỉ còn " + tongTonKhaDung + ", không đủ xuất " + soLuongCan);
-        }
+        int tongTon = batches.stream().mapToInt(b -> (int)b.get("SoLuongTon")).sum();
+        if (tongTon < soLuongCan) throw new RuntimeException("SP " + yeuCau.getMaSP() + ": Tổng tồn kho không đủ (Cần " + soLuongCan + ", Có " + tongTon + ")");
 
-        // 2. Rải đinh (Allocating)
         for (Map<String, Object> batch : batches) {
             if (soLuongCan <= 0) break;
-
             String soLo = (String) batch.get("SoLo");
             int tonLo = (int) batch.get("SoLuongTon");
-
-            // Lấy max có thể từ lô này
             int layTuLoNay = Math.min(soLuongCan, tonLo);
 
-            // Trừ kho lô này
             capNhatTonKhoTheoLo(phieu.getMaKho(), yeuCau.getMaSP(), soLo, -layTuLoNay);
 
-            // Tạo chi tiết phiếu xuất MỚI (đã có số lô cụ thể)
             ChiTietPhieuXuat newItem = new ChiTietPhieuXuat();
             newItem.setMaPhieuXuat(phieu.getMaPhieuXuat());
             newItem.setMaSP(yeuCau.getMaSP());
             newItem.setSoLuong(layTuLoNay);
             newItem.setDonGia(yeuCau.getDonGia());
             newItem.setThanhTien(yeuCau.getDonGia().multiply(new BigDecimal(layTuLoNay)));
-            newItem.setSoLo(soLo); // <--- Đã gán lô
-
-            // Lưu dòng mới vào DB
+            newItem.setSoLo(soLo);
             chiTietPhieuXuatRepository.save(newItem);
 
             soLuongCan -= layTuLoNay;
@@ -403,65 +344,47 @@ public class PhieuXuatService {
             WHERE MaKho = ? AND MaSP = ? 
               AND SoLuongTon > 0 
               AND (NgayHetHan IS NULL OR NgayHetHan >= CURDATE()) 
-            ORDER BY 
-              CASE WHEN NgayHetHan IS NULL THEN 1 ELSE 0 END, 
-              NgayHetHan ASC
+            ORDER BY CASE WHEN NgayHetHan IS NULL THEN 1 ELSE 0 END, NgayHetHan ASC
         """;
         return jdbcTemplate.queryForList(sql, maKho, maSP);
     }
 
     private void deleteOldGenericItem(Integer maPhieu, Integer maSP) {
-        String sql = "DELETE FROM chitietphieuxuat WHERE MaPhieuXuat = ? AND MaSP = ? AND (SoLo IS NULL OR SoLo = '')";
+        // [QUAN TRỌNG] Xóa dòng PENDING (thay vì null)
+        String sql = "DELETE FROM chitietphieuxuat WHERE MaPhieuXuat = ? AND MaSP = ? AND SoLo = 'PENDING'";
         jdbcTemplate.update(sql, maPhieu, maSP);
     }
 
-    // Các hàm Get/Filter/Log
+    // Các hàm Get/Filter
     public PhieuXuatHang getPhieuXuatById(Integer id) {
-        PhieuXuatHang pxh = phieuXuatRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy phiếu xuất " + id));
+        PhieuXuatHang pxh = phieuXuatRepository.findById(id).orElseThrow(() -> new RuntimeException("Không tìm thấy phiếu " + id));
         pxh.setChiTiet(chiTietPhieuXuatRepository.findByMaPhieuXuat(id));
         return pxh;
     }
-
-    public List<PhieuXuatHang> getAllPhieuXuat() {
-        return phieuXuatRepository.findAll();
-    }
-
-    public List<PhieuXuatHang> filter(PhieuXuatFilterRequest request) {
-        return phieuXuatRepository.filter(request);
-    }
-
+    public List<PhieuXuatHang> getAllPhieuXuat() { return phieuXuatRepository.findAll(); }
+    public List<PhieuXuatHang> filter(PhieuXuatFilterRequest request) { return phieuXuatRepository.filter(request); }
     public List<PhieuXuatHang> getAllPhieuXuat(String username) {
-        NguoiDung user = nguoiDungRepository.findByTenDangNhap(username)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        int roleId = user.getVaiTro().getMaVaiTro();
-        if (roleId == 1 || roleId == 2 || roleId == 3 || roleId == 4) {
-            return phieuXuatRepository.findAll();
-        } else {
-            return phieuXuatRepository.findByNguoiLap(user.getMaNguoiDung());
-        }
+        NguoiDung user = nguoiDungRepository.findByTenDangNhap(username).orElseThrow();
+        int r = user.getVaiTro().getMaVaiTro();
+        return (r >= 1 && r <= 4) ? phieuXuatRepository.findAll() : phieuXuatRepository.findByNguoiLap(user.getMaNguoiDung());
     }
 
     @Transactional
     public PhieuXuatHang createPhieuXuatForGiangVien(PhieuXuatRequest request, String username) {
-        NguoiDung giangVienUser = nguoiDungRepository.findByTenDangNhap(username)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        Integer maKhachHang = findOrCreateCustomerFromUser(giangVienUser);
-        request.setMaKH(maKhachHang);
+        NguoiDung u = nguoiDungRepository.findByTenDangNhap(username).orElseThrow();
+        request.setMaKH(findOrCreateCustomerFromUser(u));
         return createPhieuXuat(request, username);
     }
 
     private Integer findOrCreateCustomerFromUser(NguoiDung user) {
-        List<KhachHang> existing = khachHangRepository.search(user.getEmail());
-        if (!existing.isEmpty()) {
-            return existing.get(0).getMaKH();
-        }
-        KhachHang newCus = new KhachHang();
-        newCus.setTenKH(user.getHoTen() + " (GV)");
-        newCus.setEmail(user.getEmail());
-        newCus.setSdt(user.getSdt());
-        newCus.setDiaChi("Trường học");
-        return khachHangRepository.save(newCus);
+        List<KhachHang> ex = khachHangRepository.search(user.getEmail());
+        if (!ex.isEmpty()) return ex.get(0).getMaKH();
+        KhachHang c = new KhachHang();
+        c.setTenKH(user.getHoTen() + " (GV)");
+        c.setEmail(user.getEmail());
+        c.setSdt(user.getSdt());
+        c.setDiaChi("Trường học");
+        return khachHangRepository.save(c);
     }
 
     private void logActivity(Integer maUser, String act) {
