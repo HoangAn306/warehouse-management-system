@@ -25,7 +25,7 @@ public class JdbcChiTietPhieuXuatRepository implements ChiTietPhieuXuatRepositor
             ct.setSoLuong(rs.getInt("SoLuong"));
             ct.setDonGia(rs.getBigDecimal("DonGia"));
             ct.setThanhTien(rs.getBigDecimal("ThanhTien"));
-
+            ct.setSoLo(rs.getString("SoLo"));
             ct.setSanPham(sanPhamRepository.findById(ct.getMaSP()).orElse(null));
             return ct;
         };
