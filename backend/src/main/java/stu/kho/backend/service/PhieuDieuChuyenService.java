@@ -27,7 +27,7 @@ public class PhieuDieuChuyenService {
     private final SanPhamRepository sanPhamRepo;
     private final NguoiDungRepository nguoiDungRepo;
     private final HoatDongRepository hoatDongRepo;
-    private final JdbcTemplate jdbcTemplate; // [MỚI] Cần để xử lý Lô
+    private final JdbcTemplate jdbcTemplate;
 
     public PhieuDieuChuyenService(PhieuDieuChuyenRepository phieuDieuChuyenRepo,
                                   ChiTietDieuChuyenRepository chiTietDieuChuyenRepo,
@@ -57,7 +57,7 @@ public class PhieuDieuChuyenService {
             throw new RuntimeException("Kho xuất và Kho nhập không được trùng nhau.");
         }
 
-        // Validate sơ bộ tồn kho (Chỉ check nếu user CÓ chọn lô)
+        // Validate sơ bộ tồn kho (Chỉ check nếu user CÓ chọn lô cụ thể)
         for (var item : req.getChiTiet()) {
             if (item.getSoLo() != null && !item.getSoLo().isEmpty()) {
                 checkTonKhoTaiKhoXuat(req.getMaKhoXuat(), item.getMaSP(), item.getSoLo(), item.getSoLuong());
@@ -82,8 +82,12 @@ public class PhieuDieuChuyenService {
             ct.setMaSP(item.getMaSP());
             ct.setSoLuong(item.getSoLuong());
 
-            // [MỚI] Lưu lô hàng (Nếu null thì lưu PENDING hoặc null tùy DB, ở đây giả sử lưu đúng giá trị gửi lên)
-            ct.setSoLo(item.getSoLo());
+            // Nếu null hoặc rỗng thì gán PENDING để khớp logic DB (tránh lỗi duplicate key)
+            if (item.getSoLo() == null || item.getSoLo().trim().isEmpty()) {
+                ct.setSoLo("PENDING");
+            } else {
+                ct.setSoLo(item.getSoLo());
+            }
 
             chiTietDieuChuyenRepo.save(ct);
         }
@@ -93,7 +97,7 @@ public class PhieuDieuChuyenService {
     }
 
     // =================================================================
-    // 2. APPROVE (Duyệt - LOGIC QUAN TRỌNG NHẤT)
+    // 2. APPROVE (Duyệt - ĐÃ SỬA LỖI LOGIC PENDING)
     // =================================================================
     @Transactional
     public PhieuDieuChuyen approve(Integer id, String username) {
@@ -109,14 +113,16 @@ public class PhieuDieuChuyenService {
 
         for (ChiTietDieuChuyen ct : listChiTiet) {
 
-            // Case A: Đã chỉ định lô cụ thể
-            if (ct.getSoLo() != null && !ct.getSoLo().isEmpty()) {
+            // [QUAN TRỌNG] SỬA LỖI TẠI ĐÂY
+            // Chỉ coi là lô cụ thể khi khác null, khác rỗng VÀ KHÁC "PENDING"
+            if (ct.getSoLo() != null && !ct.getSoLo().isEmpty() && !ct.getSoLo().equals("PENDING")) {
                 transferSpecificBatch(pdc, ct);
             }
-            // Case B: Không chỉ định lô -> Auto FEFO
+            // Trường hợp: PENDING hoặc Null -> Chạy Auto FEFO
             else {
                 autoTransferBatches(pdc, ct);
-                // Xóa dòng chung chung (null/empty) sau khi đã tách lô
+
+                // Xóa dòng PENDING cũ đi sau khi đã tách lô thành công
                 deleteOldGenericItem(pdc.getMaPhieuDC(), ct.getMaSP());
             }
         }
@@ -126,7 +132,7 @@ public class PhieuDieuChuyenService {
         phieuDieuChuyenRepo.update(pdc);
 
         logActivity(user.getMaNguoiDung(), "Duyệt phiếu điều chuyển #" + id);
-        return getById(id); // Return lại để thấy chi tiết lô đã tách
+        return getById(id);
     }
 
     // =================================================================
@@ -142,7 +148,8 @@ public class PhieuDieuChuyenService {
         // Nếu đã duyệt -> Hoàn kho (Rollback)
         if (pdc.getTrangThai() == STATUS_DA_DUYET) {
             for (ChiTietDieuChuyen ct : pdc.getChiTiet()) {
-                if (ct.getSoLo() != null) { // Chỉ rollback những dòng có lô cụ thể
+                // Chỉ rollback những dòng có lô cụ thể (khác PENDING)
+                if (ct.getSoLo() != null && !ct.getSoLo().equals("PENDING")) {
                     rollbackTransfer(pdc, ct);
                 }
             }
@@ -166,7 +173,6 @@ public class PhieuDieuChuyenService {
 
         if (pdc.getTrangThai() == STATUS_DA_HUY) throw new RuntimeException("Không thể sửa phiếu đã hủy.");
 
-        // Check thời gian 30 ngày
         LocalDateTime ngayCheck = pdc.getNgayChuyen() != null ? pdc.getNgayChuyen() : LocalDateTime.now();
         if (ngayCheck.isBefore(LocalDateTime.now().minusDays(30))) {
             throw new RuntimeException("Không thể sửa phiếu đã quá hạn 30 ngày.");
@@ -174,9 +180,10 @@ public class PhieuDieuChuyenService {
 
         // Nếu ĐÃ DUYỆT -> Rollback kho trước
         if (pdc.getTrangThai() == STATUS_DA_DUYET) {
-            // ... (Check quyền ở đây nếu cần) ...
             for (var item : pdc.getChiTiet()) {
-                if (item.getSoLo() != null) rollbackTransfer(pdc, item);
+                if (item.getSoLo() != null && !item.getSoLo().equals("PENDING")) {
+                    rollbackTransfer(pdc, item);
+                }
             }
         }
 
@@ -196,7 +203,7 @@ public class PhieuDieuChuyenService {
 
         // Thêm chi tiết MỚI
         for (var item : req.getChiTiet()) {
-            // Check tồn kho nếu có lô
+            // Check tồn kho nếu có lô cụ thể
             if (item.getSoLo() != null && !item.getSoLo().isEmpty()) {
                 checkTonKhoTaiKhoXuat(pdc.getMaKhoXuat(), item.getMaSP(), item.getSoLo(), item.getSoLuong());
             }
@@ -205,15 +212,22 @@ public class PhieuDieuChuyenService {
             ct.setMaPhieuDC(id);
             ct.setMaSP(item.getMaSP());
             ct.setSoLuong(item.getSoLuong());
-            ct.setSoLo(item.getSoLo()); // [MỚI]
+
+            // Xử lý PENDING khi update
+            if (item.getSoLo() == null || item.getSoLo().trim().isEmpty()) {
+                ct.setSoLo("PENDING");
+            } else {
+                ct.setSoLo(item.getSoLo());
+            }
+
             chiTietDieuChuyenRepo.save(ct);
 
-            // Nếu đang là ĐÃ DUYỆT -> Thực hiện chuyển kho lại ngay (Chỉ hỗ trợ có Lô)
+            // Nếu đang là ĐÃ DUYỆT -> Thực hiện chuyển kho lại ngay
             if (pdc.getTrangThai() == STATUS_DA_DUYET) {
-                if (item.getSoLo() != null && !item.getSoLo().isEmpty()) {
+                if (ct.getSoLo() != null && !ct.getSoLo().equals("PENDING")) {
                     transferSpecificBatch(pdc, ct);
                 } else {
-                    throw new RuntimeException("Khi sửa phiếu ĐÃ DUYỆT, bắt buộc phải chọn Số Lô.");
+                    throw new RuntimeException("Khi sửa phiếu ĐÃ DUYỆT, bắt buộc phải chọn Số Lô cụ thể.");
                 }
             }
         }
@@ -233,7 +247,9 @@ public class PhieuDieuChuyenService {
         // Nếu ĐÃ DUYỆT -> Hoàn kho
         if (pdc.getTrangThai() == STATUS_DA_DUYET) {
             for (var item : pdc.getChiTiet()) {
-                if (item.getSoLo() != null) rollbackTransfer(pdc, item);
+                if (item.getSoLo() != null && !item.getSoLo().equals("PENDING")) {
+                    rollbackTransfer(pdc, item);
+                }
             }
         }
 
@@ -243,12 +259,10 @@ public class PhieuDieuChuyenService {
     }
 
     // =================================================================
-    // CÁC HÀM LOGIC KHO (PRIVATE - CORE LOGIC)
+    // HELPER FUNCTIONS (CORE LOGIC)
     // =================================================================
 
-    // 1. Chuyển 1 lô cụ thể
     private void transferSpecificBatch(PhieuDieuChuyen pdc, ChiTietDieuChuyen ct) {
-        // Lấy thông tin lô từ Kho Xuất
         String sql = "SELECT NgayHetHan, SoLuongTon FROM chitietkho WHERE MaKho = ? AND MaSP = ? AND SoLo = ?";
         Map<String, Object> info = jdbcTemplate.queryForMap(sql, pdc.getMaKhoXuat(), ct.getMaSP(), ct.getSoLo());
 
@@ -258,21 +272,14 @@ public class PhieuDieuChuyenService {
 
         if (ton < ct.getSoLuong()) throw new RuntimeException("Lô " + ct.getSoLo() + " tại kho xuất không đủ hàng.");
 
-        // A. Trừ Kho Xuất
         capNhatTonKhoTheoLo(pdc.getMaKhoXuat(), ct.getMaSP(), ct.getSoLo(), -ct.getSoLuong());
-
-        // B. Cộng Kho Nhập (Mang theo Hạn sử dụng)
         chiTietKhoRepo.upsertTonKho(pdc.getMaKhoNhap(), ct.getMaSP(), ct.getSoLo(), han, ct.getSoLuong());
 
-        // Cập nhật lại hạn vào chi tiết phiếu (để lưu vết)
         ct.setNgayHetHan(han);
-        // TODO: Update lại dòng chi tiết trong DB nếu cần lưu ngày hết hạn vào bảng chitietdieuchuyen
     }
 
-    // 2. Tự động tìm lô (FEFO) và chuyển
     private void autoTransferBatches(PhieuDieuChuyen pdc, ChiTietDieuChuyen yeuCau) {
         int soLuongCan = yeuCau.getSoLuong();
-        // Lấy danh sách lô ở Kho Xuất (Sắp xếp cũ -> mới)
         List<Map<String, Object>> batches = findBatchesForAutoPick(pdc.getMaKhoXuat(), yeuCau.getMaSP());
 
         int tongTon = batches.stream().mapToInt(b -> (int)b.get("SoLuongTon")).sum();
@@ -288,13 +295,9 @@ public class PhieuDieuChuyenService {
 
             int layTuLoNay = Math.min(soLuongCan, tonLo);
 
-            // A. Trừ Kho Xuất
             capNhatTonKhoTheoLo(pdc.getMaKhoXuat(), yeuCau.getMaSP(), soLo, -layTuLoNay);
-
-            // B. Cộng Kho Nhập
             chiTietKhoRepo.upsertTonKho(pdc.getMaKhoNhap(), yeuCau.getMaSP(), soLo, han, layTuLoNay);
 
-            // C. Tạo dòng chi tiết mới (Cụ thể hóa lô)
             ChiTietDieuChuyen newItem = new ChiTietDieuChuyen();
             newItem.setMaPhieuDC(pdc.getMaPhieuDC());
             newItem.setMaSP(yeuCau.getMaSP());
@@ -307,25 +310,16 @@ public class PhieuDieuChuyenService {
         }
     }
 
-    // 3. Rollback (Dùng cho Hủy/Xóa phiếu đã duyệt)
     private void rollbackTransfer(PhieuDieuChuyen pdc, ChiTietDieuChuyen ct) {
-        // Lấy hạn sử dụng từ Kho Nhập (để trả về Kho Xuất đúng hạn)
         String sql = "SELECT NgayHetHan FROM chitietkho WHERE MaKho = ? AND MaSP = ? AND SoLo = ?";
-        // Lưu ý: Có thể lô ở kho nhập đã hết/biến mất, ta có thể lấy từ bảng chitietdieuchuyen nếu đã lưu,
-        // hoặc query tạm. Ở đây giả sử lô vẫn còn vết ở kho nhập hoặc dùng ngày hết hạn đã lưu trong ct.
+        // Lấy hạn sử dụng hiện tại ở kho nhập (hoặc dùng ct.getNgayHetHan() nếu đã lưu)
         LocalDate han = ct.getNgayHetHan();
 
-        // Kiểm tra Kho Nhập có đủ hàng để trả lại không
         checkTonKhoTaiKhoXuat(pdc.getMaKhoNhap(), ct.getMaSP(), ct.getSoLo(), ct.getSoLuong());
 
-        // Trừ Kho Nhập
         capNhatTonKhoTheoLo(pdc.getMaKhoNhap(), ct.getMaSP(), ct.getSoLo(), -ct.getSoLuong());
-
-        // Cộng lại Kho Xuất
         chiTietKhoRepo.upsertTonKho(pdc.getMaKhoXuat(), ct.getMaSP(), ct.getSoLo(), han, ct.getSoLuong());
     }
-
-    // --- HELPER SQL ---
 
     private void checkTonKhoTaiKhoXuat(Integer maKho, Integer maSP, String soLo, Integer soLuongCan) {
         String sql = "SELECT SoLuongTon FROM chitietkho WHERE MaKho = ? AND MaSP = ? AND SoLo = ?";
@@ -340,7 +334,6 @@ public class PhieuDieuChuyenService {
     private void capNhatTonKhoTheoLo(Integer maKho, Integer maSP, String soLo, Integer soLuongThayDoi) {
         String sqlUpdate = "UPDATE chitietkho SET SoLuongTon = SoLuongTon + ? WHERE MaKho = ? AND MaSP = ? AND SoLo = ?";
         jdbcTemplate.update(sqlUpdate, soLuongThayDoi, maKho, maSP, soLo);
-        // Lưu ý: Không update bảng SanPham vì tổng tồn kho toàn hệ thống không đổi khi điều chuyển
     }
 
     private List<Map<String, Object>> findBatchesForAutoPick(Integer maKho, Integer maSP) {
@@ -354,11 +347,11 @@ public class PhieuDieuChuyenService {
     }
 
     private void deleteOldGenericItem(Integer maPhieu, Integer maSP) {
-        String sql = "DELETE FROM chitietdieuchuyen WHERE MaPhieuDC = ? AND MaSP = ? AND (SoLo IS NULL OR SoLo = '')";
+        // [CẬP NHẬT] Xóa cả dòng PENDING
+        String sql = "DELETE FROM chitietdieuchuyen WHERE MaPhieuDC = ? AND MaSP = ? AND (SoLo IS NULL OR SoLo = '' OR SoLo = 'PENDING')";
         jdbcTemplate.update(sql, maPhieu, maSP);
     }
 
-    // --- STANDARD METHODS ---
     public PhieuDieuChuyen getById(Integer id) {
         PhieuDieuChuyen pdc = phieuDieuChuyenRepo.findById(id).orElseThrow(() -> new RuntimeException("Không tìm thấy phiếu #" + id));
         pdc.setChiTiet(chiTietDieuChuyenRepo.findByMaPhieuDC(id));
