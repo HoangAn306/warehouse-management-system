@@ -20,8 +20,8 @@ public class InMemoryTokenStore {
     }
 
     public void saveToken(String token, String email) {
-        // Token sống 15 phút
-        tokenMap.put(token, new TokenData(email, LocalDateTime.now().plusMinutes(15)));
+        // Token sống 5 phút
+        tokenMap.put(token, new TokenData(email, LocalDateTime.now().plusMinutes(5)));
     }
 
     public String validateToken(String token) {

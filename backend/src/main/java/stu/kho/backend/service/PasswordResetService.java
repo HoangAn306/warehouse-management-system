@@ -51,10 +51,17 @@ public class PasswordResetService {
 
     private void sendEmail(String to, String link) {
         SimpleMailMessage msg = new SimpleMailMessage();
-        msg.setFrom(FROM_EMAIL); // Quan trọng với SendGrid
+        msg.setFrom(FROM_EMAIL);
         msg.setTo(to);
-        msg.setSubject("Đặt lại mật khẩu");
-        msg.setText("Bấm vào đây để đổi mật khẩu: " + link);
+        msg.setSubject("Yêu cầu đặt lại mật khẩu");
+
+        // Nội dung mail mới
+        String content = "Bạn vừa yêu cầu đặt lại mật khẩu.\n" +
+                "Vui lòng bấm vào link dưới đây để tiếp tục:\n" +
+                link + "\n\n" +
+                "Lưu ý: Link này sẽ hết hạn sau 5 phút.";
+
+        msg.setText(content);
         mailSender.send(msg);
     }
 }
