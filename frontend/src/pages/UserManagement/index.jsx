@@ -16,15 +16,16 @@ import {
   Row,
   Col,
   Card,
+  Grid, // [1] Import Grid
 } from "antd";
 import {
   PlusOutlined,
   EditOutlined,
   DeleteOutlined,
   SettingOutlined,
-  RestOutlined, // Icon thùng rác
-  UndoOutlined, // Icon khôi phục
-  ArrowLeftOutlined, // Icon quay lại
+  RestOutlined,
+  UndoOutlined,
+  ArrowLeftOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
 import * as userService from "../../services/user.service";
@@ -38,14 +39,14 @@ const permissionGroups = [
     key: "cat_group",
     label: " Quản lý Danh mục",
     children: [
-       {
+      {
         label: " Loại hàng",
         perms: [
           { id: 140, name: "Xem danh sách" },
           { id: 141, name: "Tạo mới" },
           { id: 142, name: "Cập nhật" },
           { id: 143, name: "Xóa" },
-        ]
+        ],
       },
       {
         label: "Sản phẩm",
@@ -53,7 +54,7 @@ const permissionGroups = [
           { id: 50, name: "Tạo mới" },
           { id: 51, name: "Cập nhật" },
           { id: 52, name: "Xóa" },
-        ]
+        ],
       },
       {
         label: " Kho hàng",
@@ -62,7 +63,7 @@ const permissionGroups = [
           { id: 71, name: "Tạo mới" },
           { id: 72, name: "Cập nhật" },
           { id: 73, name: "Xóa" },
-        ]
+        ],
       },
       {
         label: "Nhà cung cấp",
@@ -71,7 +72,7 @@ const permissionGroups = [
           { id: 61, name: "Tạo mới" },
           { id: 62, name: "Cập nhật" },
           { id: 63, name: "Xóa" },
-        ]
+        ],
       },
       {
         label: " Khách hàng",
@@ -80,17 +81,17 @@ const permissionGroups = [
           { id: 91, name: "Tạo mới" },
           { id: 92, name: "Cập nhật" },
           { id: 93, name: "Xóa" },
-        ]
-      }
-    ]
+        ],
+      },
+    ],
   },
 
-  // --- NHÓM 2: NGHIỆP VỤ (Hiển thị trực tiếp, không cần menu con) ---
+  // --- NHÓM 2: NGHIỆP VỤ ---
   {
     key: "biz_group",
     label: " Nghiệp vụ Kho",
     children: [
-       {
+      {
         label: "Phiếu nhập",
         perms: [
           { id: 26, name: "Xem danh sách" },
@@ -99,8 +100,8 @@ const permissionGroups = [
           { id: 22, name: "Xóa" },
           { id: 40, name: "Duyệt phiếu" },
           { id: 41, name: "Hủy phiếu" },
-          { id: 120, name: "Sửa phiếu (đã duyệt)"},
-        ]
+          { id: 120, name: "Sửa phiếu (đã duyệt)" },
+        ],
       },
       {
         label: "Phiếu xuất",
@@ -111,22 +112,22 @@ const permissionGroups = [
           { id: 25, name: "Xóa" },
           { id: 42, name: "Duyệt phiếu" },
           { id: 43, name: "Hủy phiếu" },
-          { id: 121, name: "Sửa phiếu (đã duyệt)"},
-        ]
+          { id: 121, name: "Sửa phiếu (đã duyệt)" },
+        ],
       },
       {
         label: "Điều chuyển",
-         perms: [
+        perms: [
           { id: 110, name: "Xem danh sách" },
           { id: 111, name: "Tạo mới" },
           { id: 114, name: "Cập nhật" },
           { id: 115, name: "Xóa" },
           { id: 112, name: "Duyệt phiếu" },
           { id: 113, name: "Hủy phiếu" },
-          { id: 116, name: "Sửa phiếu (đã duyệt)"},
-        ]
-      }
-    ]
+          { id: 116, name: "Sửa phiếu (đã duyệt)" },
+        ],
+      },
+    ],
   },
 
   // --- NHÓM 3: BÁO CÁO ---
@@ -139,11 +140,14 @@ const permissionGroups = [
       { id: 103, name: "Báo cáo Tồn kho" },
       { id: 101, name: "Lịch sử Giao dịch" },
       { id: 131, name: "Báo cáo Nhập-Xuất-Tồn" },
-    ]
-  }
+    ],
+  },
 ];
 
 const UserManagementPage = () => {
+  // [2] Hook kiểm tra màn hình
+  const screens = Grid.useBreakpoint();
+
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -170,16 +174,14 @@ const UserManagementPage = () => {
     { MaVaiTro: 5, TenVaiTro: "GIANG_VIEN" },
   ];
 
-  // 1. FETCH DATA (THEO CHẾ ĐỘ)
+  // 1. FETCH DATA
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
       let response;
       if (inTrashMode) {
-        // Gọi API thùng rác
         response = await userService.getTrashUsers();
       } else {
-        // Gọi API danh sách thường
         response = await userService.getAllUsers();
       }
       setUsers(response.data);
@@ -192,7 +194,6 @@ const UserManagementPage = () => {
 
   useEffect(() => {
     fetchUsers();
-    // Lấy quyền user hiện tại
     try {
       const storedUser = localStorage.getItem("user_info");
       if (storedUser) {
@@ -213,7 +214,7 @@ const UserManagementPage = () => {
     } catch (e) {
       setCurrentUserPermissions([]);
     }
-  }, [fetchUsers]); // Chạy lại khi inTrashMode thay đổi
+  }, [fetchUsers]);
 
   const isMyRoleAdmin = currentUserRole === "ADMIN";
   const canEdit = isMyRoleAdmin || currentUserPermissions.includes(11);
@@ -251,7 +252,6 @@ const UserManagementPage = () => {
 
   const handleDeleteConfirm = async () => {
     try {
-      // Xóa mềm -> Chuyển trạng thái thành 0 (Inactive)
       await userService.deleteUser(deletingUserId);
       messageApi.success("Đã chuyển người dùng vào thùng rác!");
       fetchUsers();
@@ -264,12 +264,11 @@ const UserManagementPage = () => {
     setDeletingUserId(null);
   };
 
-  // --- KHÔI PHỤC (RESTORE) ---
   const handleRestore = async (userId) => {
     try {
       await userService.restoreUser(userId);
       messageApi.success("Khôi phục tài khoản thành công!");
-      fetchUsers(); // Load lại danh sách thùng rác
+      fetchUsers();
     } catch (error) {
       messageApi.error(error.response?.data?.message || "Lỗi khi khôi phục!");
     }
@@ -307,7 +306,6 @@ const UserManagementPage = () => {
       .catch(() => {});
   };
 
-  // (Giữ nguyên logic permission menu)
   const handleGrantPermission = async (userId, permId, permName) => {
     try {
       await userService.grantPermission(userId, permId);
@@ -329,47 +327,43 @@ const UserManagementPage = () => {
   };
 
   const createPermissionMenu = (userRecord) => {
-    const userPerms = userRecord.dsQuyenSoHuu || []; // Hoặc userRecord.quyen
-
-    // Helper: Tạo 1 dòng item quyền (Cấp/Thu hồi)
+    const userPerms = userRecord.dsQuyenSoHuu || [];
     const renderPermItem = (perm) => {
       const hasPermission = userPerms.includes(perm.id);
       if (hasPermission) {
         return {
           key: `revoke-${perm.id}`,
           label: <span style={{ color: "red" }}>Thu hồi: {perm.name}</span>,
-          onClick: () => handleRevokePermission(userRecord.maNguoiDung, perm.id, perm.name),
+          onClick: () =>
+            handleRevokePermission(userRecord.maNguoiDung, perm.id, perm.name),
         };
       } else {
         return {
           key: `grant-${perm.id}`,
           label: <span style={{ color: "green" }}>Cấp: {perm.name}</span>,
-          onClick: () => handleGrantPermission(userRecord.maNguoiDung, perm.id, perm.name),
+          onClick: () =>
+            handleGrantPermission(userRecord.maNguoiDung, perm.id, perm.name),
         };
       }
     };
 
-    // Map dữ liệu thành Menu Ant Design
     const items = permissionGroups.map((group) => {
-      // TRƯỜNG HỢP 1: Nhóm có menu con (VD: Quản lý Danh mục -> Sản phẩm -> Quyền)
       if (group.children) {
         return {
           key: group.key,
           label: <b>{group.label}</b>,
           children: group.children.map((subGroup, idx) => ({
             key: `${group.key}_sub_${idx}`,
-            label: subGroup.label, // Tên menu con (VD: Sản phẩm)
-            children: subGroup.perms.map(renderPermItem) // Danh sách quyền bên trong
-          }))
+            label: subGroup.label,
+            children: subGroup.perms.map(renderPermItem),
+          })),
         };
       }
-
-      // TRƯỜNG HỢP 2: Nhóm hiển thị quyền trực tiếp (VD: Báo cáo -> Quyền)
       if (group.perms) {
         return {
           key: group.key,
           label: <b>{group.label}</b>,
-          children: group.perms.map(renderPermItem)
+          children: group.perms.map(renderPermItem),
         };
       }
       return null;
@@ -378,31 +372,38 @@ const UserManagementPage = () => {
     return { items };
   };
 
-  // --- CỘT BẢNG ---
+  // --- [3] CẤU HÌNH CỘT RESPONSIVE ---
   const columns = [
-    { title: "Họ Tên", dataIndex: "hoTen", key: "hoTen" },
-    { title: "Tên Đăng Nhập", dataIndex: "tenDangNhap", key: "tenDangNhap" },
-    { title: "Email", dataIndex: "email", key: "email" },
-    { title: "SĐT", dataIndex: "sdt", key: "sdt" },
+    {
+      title: "Họ Tên",
+      dataIndex: "hoTen",
+      key: "hoTen",
+      width: 180,
+      fixed: screens.md ? "left" : null, // Ghim trái trên PC
+    },
+    {
+      title: "Tên Đăng Nhập",
+      dataIndex: "tenDangNhap",
+      key: "tenDangNhap",
+      width: 150,
+    },
+    { title: "Email", dataIndex: "email", key: "email", width: 200 },
+    { title: "SĐT", dataIndex: "sdt", key: "sdt", width: 120 },
     {
       title: "Vai Trò",
       dataIndex: "tenVaiTro",
       key: "tenVaiTro",
+      width: 120,
       render: (text) => <Tag color="blue">{text}</Tag>,
     },
     {
       title: "Trạng thái",
       key: "status",
       align: "center",
+      width: 130,
       render: (_, record) => {
-        // Dựa vào logic Backend trả về hoặc logic inTrashMode
-        // Trong DB ảnh bạn gửi: TrangThai 1 là Active, 0 là Inactive/Deleted
         const val = record.trangThai ?? record.TrangThai;
-
-        // XỬ LÝ CHO BIT(1) -> Boolean
-        // Kiểm tra xem val có phải là true, hoặc số 1, hoặc chuỗi "1" không
         const isActive = val === true || val === 1 || val === "1";
-
         return isActive ? (
           <Tag color="green"> Hoạt động</Tag>
         ) : (
@@ -414,30 +415,30 @@ const UserManagementPage = () => {
       title: "Hành động",
       key: "action",
       width: 150,
+      align: "center",
+      fixed: screens.md ? "right" : null, // Ghim phải trên PC
       render: (_, record) => (
         <Space
-          size="middle"
+          size="small"
           wrap
         >
           {inTrashMode ? (
-            // 1. TRONG THÙNG RÁC: Chỉ hiện nút Khôi Phục
             <Tooltip title="Khôi phục tài khoản">
               <Button
                 type="primary"
                 ghost
+                size="small"
                 icon={<UndoOutlined />}
                 onClick={() => handleRestore(record.maNguoiDung)}
-              >
-                Khôi phục
-              </Button>
+              />
             </Tooltip>
           ) : (
-            // 2. DANH SÁCH CHÍNH: Hiện Sửa/Xóa/Quyền
             <>
               {canEdit && (
                 <Tooltip title="Sửa thông tin">
                   <Button
                     icon={<EditOutlined />}
+                    size="small"
                     onClick={() => handleEdit(record)}
                   />
                 </Tooltip>
@@ -448,6 +449,7 @@ const UserManagementPage = () => {
                   <Button
                     icon={<DeleteOutlined />}
                     danger
+                    size="small"
                     onClick={() => handleDelete(record.maNguoiDung)}
                   />
                 </Tooltip>
@@ -460,7 +462,10 @@ const UserManagementPage = () => {
                   trigger={["click"]}
                 >
                   <Tooltip title="Phân quyền">
-                    <Button icon={<SettingOutlined />} />
+                    <Button
+                      icon={<SettingOutlined />}
+                      size="small"
+                    />
                   </Tooltip>
                 </Dropdown>
               )}
@@ -472,19 +477,22 @@ const UserManagementPage = () => {
   ];
 
   return (
-    <div>
+    <div style={{ padding: "0 10px" }}>
       {contextHolder}
 
       <Card
         style={{ marginBottom: 16 }}
         bodyStyle={{ padding: "16px" }}
       >
+        {/* RESPONSIVE HEADER */}
         <Row
-          justify="space-between"
+          gutter={[16, 16]}
           align="middle"
         >
-          {/* CỤM TIÊU ĐỀ / NÚT THÊM */}
-          <Col>
+          <Col
+            xs={24}
+            md={12}
+          >
             {inTrashMode ? (
               <h3 style={{ margin: 0, color: "#ff4d4f" }}>
                 <RestOutlined /> Thùng rác (Tài khoản đã xóa)
@@ -504,8 +512,11 @@ const UserManagementPage = () => {
             )}
           </Col>
 
-          {/* CỤM NÚT CHUYỂN ĐỔI */}
-          <Col>
+          <Col
+            xs={24}
+            md={12}
+            style={{ textAlign: screens.md ? "right" : "left" }}
+          >
             <Space>
               <Button
                 icon={<ReloadOutlined />}
@@ -519,7 +530,7 @@ const UserManagementPage = () => {
                   icon={<ArrowLeftOutlined />}
                   onClick={() => setInTrashMode(false)}
                 >
-                  Quay lại danh sách
+                  Quay lại
                 </Button>
               ) : (
                 <Button
@@ -542,73 +553,116 @@ const UserManagementPage = () => {
         loading={loading}
         rowKey="maNguoiDung"
         pagination={{ pageSize: 5 }}
+        // [QUAN TRỌNG] Cho phép cuộn ngang
+        scroll={{ x: 1000 }}
+        size={screens.md ? "middle" : "small"}
       />
 
-      {/* MODAL FORM (Giữ nguyên) */}
+      {/* MODAL FORM (Responsive Width) */}
       <Modal
         title={editingUser ? "Sửa người dùng" : "Tạo người dùng mới"}
         open={isModalVisible}
         onOk={handleOk}
         onCancel={() => setIsModalVisible(false)}
+        width={screens.md ? 600 : "100%"}
+        style={{ top: 20 }}
       >
         <Form
           form={form}
           layout="vertical"
           name="userForm"
         >
-          <Form.Item
-            name="tenDangNhap"
-            label="Tên Đăng Nhập"
-            rules={[{ required: true }]}
-          >
-            <Input disabled={!!editingUser} />
-          </Form.Item>
-          <Form.Item
-            name="hoTen"
-            label="Họ Tên"
-            rules={[{ required: true }]}
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item
-            name="email"
-            label="Email"
-            rules={[{ required: true, type: "email" }]}
-          >
-            <Input />
-          </Form.Item>
-          {!editingUser && (
-            <Form.Item
-              name="matKhau"
-              label="Mật Khẩu"
-              rules={[{ required: true }]}
+          <Row gutter={16}>
+            <Col
+              xs={24}
+              md={12}
             >
-              <Input.Password />
-            </Form.Item>
-          )}
-          <Form.Item
-            name="sdt"
-            label="Số Điện Thoại"
-            rules={[{ required: true }]}
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item
-            name="maVaiTro"
-            label="Vai Trò"
-            rules={[{ required: true }]}
-          >
-            <Select placeholder="Chọn một vai trò">
-              {danhSachVaiTro.map((vt) => (
-                <Option
-                  key={vt.MaVaiTro}
-                  value={vt.MaVaiTro}
+              <Form.Item
+                name="tenDangNhap"
+                label="Tên Đăng Nhập"
+                rules={[{ required: true }]}
+              >
+                <Input disabled={!!editingUser} />
+              </Form.Item>
+            </Col>
+            <Col
+              xs={24}
+              md={12}
+            >
+              <Form.Item
+                name="hoTen"
+                label="Họ Tên"
+                rules={[{ required: true }]}
+              >
+                <Input />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col
+              xs={24}
+              md={12}
+            >
+              <Form.Item
+                name="email"
+                label="Email"
+                rules={[{ required: true, type: "email" }]}
+              >
+                <Input />
+              </Form.Item>
+            </Col>
+            <Col
+              xs={24}
+              md={12}
+            >
+              <Form.Item
+                name="sdt"
+                label="Số Điện Thoại"
+                rules={[{ required: true }]}
+              >
+                <Input />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col
+              xs={24}
+              md={12}
+            >
+              <Form.Item
+                name="maVaiTro"
+                label="Vai Trò"
+                rules={[{ required: true }]}
+              >
+                <Select placeholder="Chọn một vai trò">
+                  {danhSachVaiTro.map((vt) => (
+                    <Option
+                      key={vt.MaVaiTro}
+                      value={vt.MaVaiTro}
+                    >
+                      {vt.TenVaiTro}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </Col>
+            {!editingUser && (
+              <Col
+                xs={24}
+                md={12}
+              >
+                <Form.Item
+                  name="matKhau"
+                  label="Mật Khẩu"
+                  rules={[{ required: true }]}
                 >
-                  {vt.TenVaiTro}
-                </Option>
-              ))}
-            </Select>
-          </Form.Item>
+                  <Input.Password />
+                </Form.Item>
+              </Col>
+            )}
+          </Row>
         </Form>
       </Modal>
 

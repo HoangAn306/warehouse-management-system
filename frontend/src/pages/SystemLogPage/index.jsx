@@ -1,12 +1,24 @@
 // src/pages/SystemLogPage/index.jsx
 
 import React, { useState, useEffect, useCallback } from "react";
-import { Table, message, Tag, Card, DatePicker, Space, Button } from "antd";
+import {
+  Table,
+  message,
+  Tag,
+  Card,
+  DatePicker,
+  Space,
+  Button,
+  Row,
+  Col,
+  Grid, // [1] Import Grid
+} from "antd";
 import {
   HistoryOutlined,
   ReloadOutlined,
   LockOutlined,
 } from "@ant-design/icons";
+
 // [!] Import đầy đủ các service để lấy tên
 import * as logService from "../../services/log.service";
 import * as userService from "../../services/user.service";
@@ -74,6 +86,9 @@ const PERMISSION_MAP = {
 };
 
 const SystemLogPage = () => {
+  // [2] Hook kiểm tra màn hình
+  const screens = Grid.useBreakpoint();
+
   const [logs, setLogs] = useState([]);
   const [displayedLogs, setDisplayedLogs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -128,7 +143,6 @@ const SystemLogPage = () => {
 
     setLoading(true);
     try {
-      // [!] Gọi song song tất cả các API cần thiết
       const [
         resLogs,
         resUsers,
@@ -139,7 +153,7 @@ const SystemLogPage = () => {
       ] = await Promise.allSettled([
         logService.getAllLogs(),
         userService.getAllUsers(),
-        productService.getAllProducts(), // Lấy cả SP đã xóa mềm nếu API hỗ trợ
+        productService.getAllProducts(),
         customerService.getAllCustomers(),
         supplierService.getAllSuppliers(),
         warehouseService.getAllWarehouses(),
@@ -154,7 +168,7 @@ const SystemLogPage = () => {
         );
       }
 
-      // 2. Tạo Map User { id: "Tên (Username)" }
+      // 2. Tạo Map User
       let uMap = {};
       if (resUsers.status === "fulfilled") {
         (resUsers.value.data || []).forEach(
@@ -162,7 +176,7 @@ const SystemLogPage = () => {
         );
       }
 
-      // 3. Tạo Map Sản phẩm { id: "Tên SP" }
+      // 3. Tạo Map Sản phẩm
       let pMap = {};
       if (resProducts.status === "fulfilled") {
         const pList = Array.isArray(resProducts.value.data)
@@ -195,7 +209,6 @@ const SystemLogPage = () => {
         );
       }
 
-      // Lưu tất cả map vào state
       setDataMaps({
         users: uMap,
         products: pMap,
@@ -240,12 +253,11 @@ const SystemLogPage = () => {
     setTableParams({ pagination, filters, ...sorter });
   };
 
-  // [!] HÀM FORMAT THÔNG MINH: Thay ID bằng Tên
+  // HÀM FORMAT THÔNG MINH
   const formatActionText = (text) => {
     if (!text) return "";
     let newText = text;
 
-    // 1. Thay thế User ID
     newText = newText.replace(
       /user \(MaNguoiDung:\s*(\d+)\)|MaNguoiDung:\s*(\d+)/gi,
       (match, id1, id2) => {
@@ -256,33 +268,28 @@ const SystemLogPage = () => {
       }
     );
 
-    // 2. Thay thế Quyền (MaChucNang)
     newText = newText.replace(/MaChucNang:\s*(\d+)/gi, (match, id) => {
       return PERMISSION_MAP[id] ? `Quyền: <b>${PERMISSION_MAP[id]}</b>` : match;
     });
 
-    // 3. Thay thế Sản phẩm ID
     newText = newText.replace(/sản phẩm ID:\s*(\d+)/gi, (match, id) => {
       return dataMaps.products[id]
         ? `sản phẩm: <b>${dataMaps.products[id]}</b>`
         : match;
     });
 
-    // 4. Thay thế Khách hàng ID
     newText = newText.replace(/khách hàng ID:\s*(\d+)/gi, (match, id) => {
       return dataMaps.customers[id]
         ? `khách hàng: <b>${dataMaps.customers[id]}</b>`
         : match;
     });
 
-    // 5. Thay thế Nhà cung cấp ID
     newText = newText.replace(/Nhà cung cấp ID:\s*(\d+)/gi, (match, id) => {
       return dataMaps.suppliers[id]
         ? `NCC: <b>${dataMaps.suppliers[id]}</b>`
         : match;
     });
 
-    // 6. Thay thế Kho ID
     newText = newText.replace(/kho hàng ID:\s*(\d+)/gi, (match, id) => {
       return dataMaps.warehouses[id]
         ? `kho: <b>${dataMaps.warehouses[id]}</b>`
@@ -292,12 +299,19 @@ const SystemLogPage = () => {
     return <span dangerouslySetInnerHTML={{ __html: newText }} />;
   };
 
+  // --- [3] CẤU HÌNH CỘT RESPONSIVE ---
   const columns = [
-    { title: "Mã HD", dataIndex: "maHD", width: 80 },
+    {
+      title: "Mã HD",
+      dataIndex: "maHD",
+      width: 80,
+      fixed: screens.md ? "left" : null, // Ghim trái trên PC
+    },
     {
       title: "Người Thực Hiện",
       dataIndex: "tenDangNhap",
       width: 200,
+      fixed: screens.md ? "left" : null, // Ghim trái trên PC
       render: (text, record) => (
         <div>
           <strong>{text}</strong>
@@ -308,6 +322,7 @@ const SystemLogPage = () => {
     {
       title: "Hành Động",
       dataIndex: "hanhDong",
+      width: 400, // Đặt độ rộng cố định để bảng có thể cuộn ngang
       render: (text) => {
         let color = "blue";
         if (
@@ -325,7 +340,6 @@ const SystemLogPage = () => {
           color = "green";
         if (text.includes("Cập nhật") || text.includes("Sửa")) color = "orange";
 
-        // Gọi hàm format mới
         return (
           <Tag
             color={color}
@@ -340,6 +354,7 @@ const SystemLogPage = () => {
       title: "Thời Gian",
       dataIndex: "thoiGianThucHien",
       width: 180,
+      fixed: screens.md ? "right" : null, // Ghim phải trên PC
       render: (text) => dayjs(text).format("DD/MM/YYYY HH:mm:ss"),
     },
   ];
@@ -358,40 +373,72 @@ const SystemLogPage = () => {
   }
 
   return (
-    <div style={{ padding: 24 }}>
+    <div style={{ padding: "0 10px" }}>
+      {" "}
+      {/* Padding nhỏ cho mobile */}
       {contextHolder}
+      {/* KHU VỰC BỘ LỌC (Sử dụng Grid thay vì Space để Responsive) */}
       <Card
-        title={
-          <span>
-            <HistoryOutlined /> Nhật Ký Hoạt Động Hệ Thống
-          </span>
-        }
-        bordered={false}
+        style={{ marginBottom: 16 }}
+        bodyStyle={{ padding: "16px" }}
       >
-        <Space style={{ marginBottom: 16 }}>
-          <RangePicker
-            placeholder={["Từ ngày", "Đến ngày"]}
-            format="DD/MM/YYYY"
-            onChange={(dates) => setDateRange(dates)}
-          />
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={fetchData}
-            loading={loading}
+        <Row
+          gutter={[16, 16]}
+          align="middle"
+        >
+          {/* Tiêu đề */}
+          <Col
+            xs={24}
+            md={8}
           >
-            Tải lại
-          </Button>
-        </Space>
-        <Table
-          className="fixed-height-table"
-          columns={columns}
-          dataSource={displayedLogs}
-          loading={loading}
-          rowKey="maHD"
-          pagination={tableParams.pagination}
-          onChange={handleTableChange}
-        />
+            <h3 style={{ margin: 0, fontSize: "18px" }}>
+              <HistoryOutlined /> Nhật Ký Hoạt Động
+            </h3>
+          </Col>
+
+          {/* Chọn ngày */}
+          <Col
+            xs={24}
+            md={10}
+          >
+            <RangePicker
+              placeholder={["Từ ngày", "Đến ngày"]}
+              format="DD/MM/YYYY"
+              onChange={(dates) => setDateRange(dates)}
+              style={{ width: "100%" }}
+            />
+          </Col>
+
+          {/* Nút Tải lại */}
+          <Col
+            xs={24}
+            md={6}
+            style={{ textAlign: screens.md ? "right" : "left" }}
+          >
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={fetchData}
+              loading={loading}
+              block={!screens.md} // Full width trên mobile
+            >
+              Tải lại
+            </Button>
+          </Col>
+        </Row>
       </Card>
+      {/* BẢNG DỮ LIỆU */}
+      <Table
+        className="fixed-height-table"
+        columns={columns}
+        dataSource={displayedLogs}
+        loading={loading}
+        rowKey="maHD"
+        pagination={tableParams.pagination}
+        onChange={handleTableChange}
+        // [QUAN TRỌNG] Cuộn ngang
+        scroll={{ x: 900 }}
+        size={screens.md ? "middle" : "small"}
+      />
     </div>
   );
 };
