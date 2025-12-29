@@ -100,7 +100,7 @@ public class JdbcDashboardRepository implements DashboardRepository {
             return dto;
         }, from, to, limit);
     }
-
+//4 Thông báo hết hạn và cảnh báo các sản phẩm sắp hết hạn
     public DashboardAlertsDTO getAlerts() {
         DashboardAlertsDTO alerts = new DashboardAlertsDTO();
 
@@ -115,16 +115,17 @@ public class JdbcDashboardRepository implements DashboardRepository {
             return item;
         }));
 
-        // 2. HẾT HẠN SỬ DỤNG (CẬP NHẬT PHẦN NÀY)
-        String sqlExpire =
-                "SELECT ctk.MaSP, sp.TenSP, ctk.SoLo, ctk.NgayHetHan, ctk.SoLuongTon, ctk.MaKho, kh.TenKho " +
-                        "FROM chitietkho ctk " +
-                        "JOIN sanpham sp ON ctk.MaSP = sp.MaSP " +
-                        "JOIN khohang kh ON ctk.MaKho = kh.MaKho " +
-                        "WHERE ctk.NgayHetHan IS NOT NULL " +
-                        "AND ctk.NgayHetHan <= DATE_ADD(CURDATE(), INTERVAL 7 DAY) " +
-                        "AND ctk.SoLuongTon > 0 " +
-                        "ORDER BY ctk.NgayHetHan ASC";
+        // 2. HẾT HẠN SỬ DỤNG
+        String sqlExpire = """
+            SELECT ctk.MaSP, sp.TenSP, ctk.SoLo, ctk.NgayHetHan, ctk.SoLuongTon, ctk.MaKho, kh.TenKho
+            FROM chitietkho ctk
+            JOIN sanpham sp ON ctk.MaSP = sp.MaSP
+            JOIN khohang kh ON ctk.MaKho = kh.MaKho
+            WHERE ctk.NgayHetHan IS NOT NULL
+              AND ctk.NgayHetHan <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+              AND ctk.SoLuongTon > 0
+            ORDER BY ctk.NgayHetHan ASC
+        """;
 
         alerts.setHetHanSuDung(jdbcTemplate.query(sqlExpire, (rs, rowNum) -> {
             DashboardAlertsDTO.HetHanSuDung item = new DashboardAlertsDTO.HetHanSuDung();
@@ -134,18 +135,16 @@ public class JdbcDashboardRepository implements DashboardRepository {
             item.setNgayHetHan(rs.getDate("NgayHetHan").toLocalDate());
             item.setMaKho(rs.getInt("MaKho"));
 
-            // --- CÁC DÒNG BỊ THIẾU CẦN BỔ SUNG ---
-            item.setSoLuongTon(rs.getInt("SoLuongTon")); // Lấy số lượng
-            item.setTenKho(rs.getString("TenKho"));     // Lấy tên kho
+            // --- [ĐÃ BỔ SUNG CODE THIẾU] ---
+            item.setSoLuongTon(rs.getInt("SoLuongTon"));
+            item.setTenKho(rs.getString("TenKho"));
 
-            // Logic tính trạng thái
             if (item.getNgayHetHan().isBefore(java.time.LocalDate.now())) {
                 item.setTrangThai("ĐÃ HẾT HẠN");
             } else {
                 item.setTrangThai("Sắp hết hạn");
             }
-            // --------------------------------------
-
+            // -------------------------------
             return item;
         }));
 
