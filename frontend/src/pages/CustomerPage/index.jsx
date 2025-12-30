@@ -229,6 +229,14 @@ const CustomerPage = () => {
   // Logic: screens.lg (PC) thì ghim cột. Mobile thì thả lỏng.
   const columns = [
     {
+      title: "Mã",
+      dataIndex: "maKH",
+      width: 80,
+      align: "center",
+      // Ghim trái trên PC
+      fixed: screens.lg ? "left" : null,
+    },
+    {
       title: "Tên Khách Hàng",
       dataIndex: "tenKH",
       width: 200,

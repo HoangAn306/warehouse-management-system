@@ -777,12 +777,12 @@ const TransferPage = () => {
             />
           </Form.Item>
 
-          <Divider
+          {/* <Divider
             orientation="left"
             style={{ borderColor: "#faad14", color: "#faad14" }}
           >
             DANH SÁCH HÀNG HÓA
-          </Divider>
+          </Divider> */}
 
           {/* HEADER FORM LIST RESPONSIVE */}
           {screens.md && (

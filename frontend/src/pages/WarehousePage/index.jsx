@@ -226,6 +226,14 @@ const WarehousePage = () => {
   // Logic: screens.lg (PC) thì ghim cột. Mobile thì thả lỏng.
   const columns = [
     {
+      title: "Mã",
+      dataIndex: "maKho",
+      width: 80,
+      align: "center",
+      // Ghim trái trên PC
+      fixed: screens.lg ? "left" : null,
+    },
+    {
       title: "Tên Kho",
       dataIndex: "tenKho",
       key: "tenKho",

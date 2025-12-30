@@ -255,6 +255,14 @@ const ProductPage = () => {
   // để đảm bảo iPhone 11 ngang (896px) vẫn được tính là mobile (không ghim cột).
   const columns = [
     {
+      title: "Mã",
+      dataIndex: "maSP",
+      width: 80,
+      align: "center",
+      // Ghim trái trên PC
+      fixed: screens.lg ? "left" : null,
+    },
+    {
       title: "Ảnh",
       dataIndex: "hinhAnh",
       width: 80,

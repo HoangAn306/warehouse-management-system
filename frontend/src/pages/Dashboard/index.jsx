@@ -12,7 +12,7 @@ import {
   Table,
   Spin,
   Tabs,
-  Grid, // [1] Import Grid để bắt kích thước màn hình
+  Grid,
 } from "antd";
 import {
   ArrowUpOutlined,
@@ -22,7 +22,6 @@ import {
   DollarOutlined,
   ShopOutlined,
 } from "@ant-design/icons";
-// Thư viện biểu đồ
 import {
   AreaChart,
   Area,
@@ -38,16 +37,13 @@ import * as dashboardService from "../../services/dashboard.service";
 
 const { RangePicker } = DatePicker;
 
-// [!] 1. ĐỊNH NGHĨA QUYỀN DASHBOARD
 const PERM_DASHBOARD_VIEW = 130;
 
 const Dashboard = () => {
-  // [2] Hook kiểm tra màn hình (screens.md = true nghĩa là PC/Tablet, false là Mobile)
   const screens = Grid.useBreakpoint();
 
   const [loading, setLoading] = useState(false);
 
-  // State dữ liệu
   const [stats, setStats] = useState({});
   const [chartData, setChartData] = useState([]);
   const [topProducts, setTopProducts] = useState([]);
@@ -57,17 +53,14 @@ const Dashboard = () => {
     tonAm: [],
   });
 
-  // State bộ lọc (Mặc định là tháng hiện tại)
   const [filter, setFilter] = useState({
     from: dayjs().startOf("month"),
     to: dayjs().endOf("month"),
   });
 
-  // [!] 2. STATE PHÂN QUYỀN
   const [permissions, setPermissions] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  // [!] 3. LẤY QUYỀN TỪ LOCALSTORAGE
   useEffect(() => {
     const storedUser = localStorage.getItem("user_info");
     if (storedUser) {
@@ -90,13 +83,10 @@ const Dashboard = () => {
     }
   }, []);
 
-  // Biến kiểm tra quyền
   const canViewDashboard = isAdmin || permissions.includes(PERM_DASHBOARD_VIEW);
 
-  // Hàm format tiền tệ
   const formatCurrency = (value) => `${Number(value || 0).toLocaleString()} đ`;
 
-  // 1. Hàm tải dữ liệu tổng hợp
   const fetchData = useCallback(async () => {
     if (!canViewDashboard) return;
 
@@ -150,17 +140,15 @@ const Dashboard = () => {
     }
   };
 
-  // Cấu hình cột cho bảng Top Sản phẩm
   const topProductColumns = [
     {
       title: "Sản phẩm",
       dataIndex: "tenSP",
       key: "tenSP",
-      // Mobile thì cho phép tên dài xuống dòng, không fix width cứng
       width: screens.md ? undefined : 150,
     },
     {
-      title: "SL", // Rút gọn tên cột trên mobile
+      title: "SL",
       dataIndex: "tongSoLuong",
       key: "tongSoLuong",
       align: "center",
@@ -176,9 +164,9 @@ const Dashboard = () => {
     },
   ];
 
-  // Cấu hình cột cho bảng Cảnh báo
-  const alertColumns = [
-    { title: "Mã", dataIndex: "maSP", width: 60, responsive: ["sm"] }, // Ẩn mã trên điện thoại quá nhỏ
+  // [SỬA] 1. Cấu hình cột riêng cho Sắp hết hàng (Không có Số lô/Ngày HH)
+  const lowStockColumns = [
+    { title: "Mã", dataIndex: "maSP", width: 60, responsive: ["sm"] },
     { title: "Tên Sản Phẩm", dataIndex: "tenSP" },
     {
       title: "Tồn Kho",
@@ -195,6 +183,31 @@ const Dashboard = () => {
           >
             {ton}{" "}
             {record.mucTonToiThieu ? `/ Min: ${record.mucTonToiThieu}` : ""}
+          </span>
+        );
+      },
+    },
+  ];
+
+  // [SỬA] 2. Cấu hình cột riêng cho Hết hạn sử dụng (Có Số lô, Ngày HH)
+  const expiredColumns = [
+    { title: "Mã", dataIndex: "maSP", width: 60, responsive: ["sm"] },
+    { title: "Tên Sản Phẩm", dataIndex: "tenSP" },
+    { title: "Số lô", dataIndex: "soLo", width: 100 },
+    {
+      title: "Ngày hết hạn",
+      dataIndex: "ngayHetHan",
+      width: 120,
+      render: (val) => (val ? dayjs(val).format("DD/MM/YYYY") : ""),
+    },
+    {
+      title: "Tồn Kho",
+      key: "tonKho",
+      width: 100,
+      render: (_, record) => {
+        return (
+          <span style={{ color: "red", fontWeight: "bold" }}>
+            {record.soLuongTon}
           </span>
         );
       },
@@ -218,24 +231,19 @@ const Dashboard = () => {
 
   return (
     <div style={{ padding: "0 10px" }}>
-      {/* --- THANH CÔNG CỤ (RESPONSIVE) --- */}
       <div
         style={{
           marginBottom: 20,
           display: "flex",
-          // [Responsive] Mobile: Xếp dọc (column), Desktop: Xếp ngang (row)
           flexDirection: screens.md ? "row" : "column",
           justifyContent: "space-between",
-          // [Responsive] Mobile: Căn trái, Desktop: Căn giữa theo trục dọc
           alignItems: screens.md ? "center" : "flex-start",
-          gap: 10, // Tạo khoảng cách giữa Title và Bộ lọc khi xuống dòng
+          gap: 10,
         }}
       >
         <h2 style={{ margin: 0 }}>Tổng Quan Kho</h2>
 
-        {/* Space bọc RangePicker và Button */}
         <Space
-          // [Responsive] Mobile: button xuống dòng nếu thiếu chỗ, width 100%
           direction={screens.md ? "horizontal" : "vertical"}
           style={{ width: screens.md ? "auto" : "100%" }}
           size={10}
@@ -247,13 +255,11 @@ const Dashboard = () => {
             value={[filter.from, filter.to]}
             onChange={handleDateChange}
             allowClear={false}
-            // [Responsive] Mobile: RangePicker full width để dễ bấm
             style={{ width: screens.md ? "auto" : "100%" }}
           />
           <Button
             icon={<ReloadOutlined />}
             onClick={fetchData}
-            // [Responsive] Mobile: Button full width
             block={!screens.md}
           >
             Làm mới
@@ -267,8 +273,7 @@ const Dashboard = () => {
         </div>
       ) : (
         <>
-          {/* --- 1. THẺ THỐNG KÊ (STATS) --- */}
-          {/* Gutter: Khoảng cách giữa các thẻ. xs=24 tự động xếp chồng trên mobile */}
+          {/* STATS */}
           <Row gutter={[16, 16]}>
             <Col
               xs={24}
@@ -355,7 +360,7 @@ const Dashboard = () => {
             gutter={[16, 16]}
             style={{ marginTop: 24 }}
           >
-            {/* --- 2. BIỂU ĐỒ (CHART) --- */}
+            {/* CHART */}
             <Col
               xs={24}
               lg={16}
@@ -363,13 +368,13 @@ const Dashboard = () => {
               <Card
                 title={`Biểu đồ (${filter.from.year()})`}
                 bordered={false}
-                bodyStyle={{ padding: screens.md ? 24 : "24px 0" }} // Mobile giảm padding ngang
+                bodyStyle={{ padding: screens.md ? 24 : "24px 0" }}
               >
                 <div style={{ height: 350, width: "100%" }}>
                   <ResponsiveContainer>
                     <AreaChart
                       data={chartData}
-                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }} // Giảm margin phải cho mobile
+                      margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
                     >
                       <defs>
                         <linearGradient
@@ -411,13 +416,12 @@ const Dashboard = () => {
                       </defs>
                       <XAxis dataKey="thang" />
                       <YAxis
-                        // Rút gọn số trên trục Y (ví dụ 1.000.000 -> 1M)
                         tickFormatter={(value) =>
                           new Intl.NumberFormat("en", {
                             notation: "compact",
                           }).format(value)
                         }
-                        width={40} // Thu nhỏ chiều rộng trục Y để đỡ chiếm chỗ
+                        width={40}
                       />
                       <CartesianGrid strokeDasharray="3 3" />
                       <Tooltip
@@ -448,7 +452,7 @@ const Dashboard = () => {
               </Card>
             </Col>
 
-            {/* --- 3. TOP SẢN PHẨM --- */}
+            {/* TOP PRODUCTS */}
             <Col
               xs={24}
               lg={8}
@@ -464,14 +468,13 @@ const Dashboard = () => {
                   rowKey="maSP"
                   pagination={false}
                   size="small"
-                  // [Responsive] Thêm scroll ngang để không bị vỡ trên mobile
                   scroll={{ x: 400 }}
                 />
               </Card>
             </Col>
           </Row>
 
-          {/* --- 4. CẢNH BÁO (ALERTS) --- */}
+          {/* ALERTS */}
           <Row
             gutter={[16, 16]}
             style={{ marginTop: 24 }}
@@ -494,11 +497,11 @@ const Dashboard = () => {
                       children: (
                         <Table
                           dataSource={alerts.sapHetHang}
-                          columns={alertColumns}
+                          // [SỬA] Sử dụng lowStockColumns cho tab này
+                          columns={lowStockColumns}
                           rowKey="maSP"
                           pagination={{ pageSize: 5 }}
                           size="small"
-                          // [Responsive] Thêm scroll ngang
                           scroll={{ x: 500 }}
                         />
                       ),
@@ -509,8 +512,9 @@ const Dashboard = () => {
                       children: (
                         <Table
                           dataSource={alerts.hetHanSuDung}
-                          columns={alertColumns}
-                          rowKey="maSP"
+                          // [SỬA] Sử dụng expiredColumns cho tab này
+                          columns={expiredColumns}
+                          rowKey={(record, index) => index}
                           pagination={{ pageSize: 5 }}
                           size="small"
                           scroll={{ x: 500 }}
