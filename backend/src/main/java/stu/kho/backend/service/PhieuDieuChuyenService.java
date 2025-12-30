@@ -1,5 +1,10 @@
 package stu.kho.backend.service;
 
+import com.lowagie.text.*;
+import com.lowagie.text.pdf.BaseFont;
+import com.lowagie.text.pdf.PdfPCell;
+import com.lowagie.text.pdf.PdfPTable;
+import com.lowagie.text.pdf.PdfWriter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -8,8 +13,11 @@ import stu.kho.backend.dto.PhieuDieuChuyenRequest;
 import stu.kho.backend.entity.*;
 import stu.kho.backend.repository.*;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -28,6 +36,8 @@ public class PhieuDieuChuyenService {
     private final NguoiDungRepository nguoiDungRepo;
     private final HoatDongRepository hoatDongRepo;
     private final JdbcTemplate jdbcTemplate;
+    private final KhoHangRepository khoHangRepository;
+
 
     public PhieuDieuChuyenService(PhieuDieuChuyenRepository phieuDieuChuyenRepo,
                                   ChiTietDieuChuyenRepository chiTietDieuChuyenRepo,
@@ -35,7 +45,7 @@ public class PhieuDieuChuyenService {
                                   SanPhamRepository sanPhamRepo,
                                   NguoiDungRepository nguoiDungRepo,
                                   HoatDongRepository hoatDongRepo,
-                                  JdbcTemplate jdbcTemplate) {
+                                  JdbcTemplate jdbcTemplate, KhoHangRepository khoHangRepository) {
         this.phieuDieuChuyenRepo = phieuDieuChuyenRepo;
         this.chiTietDieuChuyenRepo = chiTietDieuChuyenRepo;
         this.chiTietKhoRepo = chiTietKhoRepo;
@@ -43,6 +53,7 @@ public class PhieuDieuChuyenService {
         this.nguoiDungRepo = nguoiDungRepo;
         this.hoatDongRepo = hoatDongRepo;
         this.jdbcTemplate = jdbcTemplate;
+        this.khoHangRepository = khoHangRepository;
     }
 
     // =================================================================
@@ -366,5 +377,123 @@ public class PhieuDieuChuyenService {
         hd.setHanhDong(act);
         hd.setThoiGianThucHien(java.time.LocalDateTime.now());
         hoatDongRepo.save(hd);
+    }
+    // =================================================================
+    // TÍNH NĂNG IN PHIẾU ĐIỀU CHUYỂN (PDF)
+    // =================================================================
+    public byte[] exportPhieuDieuChuyenPdf(Integer id) throws DocumentException, IOException {
+        // 1. Lấy dữ liệu
+        PhieuDieuChuyen pdc = getById(id);
+        KhoHang khoXuat = khoHangRepository.findById(pdc.getMaKhoXuat()).orElse(new KhoHang());
+        KhoHang khoNhap = khoHangRepository.findById(pdc.getMaKhoNhap()).orElse(new KhoHang());
+        List<ChiTietDieuChuyen> chiTietList = pdc.getChiTiet();
+
+        // 2. Khởi tạo PDF
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Document document = new Document(PageSize.A4);
+        PdfWriter.getInstance(document, out);
+        document.open();
+
+        // Font chữ
+        BaseFont bf = BaseFont.createFont("fonts/times.ttf", BaseFont.IDENTITY_H, BaseFont.EMBEDDED); // Nếu có file font
+        // BaseFont bf = BaseFont.createFont("fonts/arial.ttf", BaseFont.IDENTITY_H, BaseFont.EMBEDDED); // Nếu có font tiếng Việt
+
+        Font fontTitle = new Font(bf, 18, Font.BOLD);
+        Font fontBold = new Font(bf, 11, Font.BOLD);
+        Font fontNormal = new Font(bf, 11, Font.NORMAL);
+
+        // 3. Tiêu đề
+        Paragraph title = new Paragraph("LENH DIEU CHUYEN KHO (TRANSFER ORDER)", fontTitle);
+        title.setAlignment(Element.ALIGN_CENTER);
+        document.add(title);
+        document.add(new Paragraph(" ", fontNormal));
+
+        // 4. Thông tin chung (Từ Kho -> Đến Kho)
+        PdfPTable infoTable = new PdfPTable(2);
+        infoTable.setWidthPercentage(100);
+        infoTable.setWidths(new float[]{1, 1}); // Chia đều 50-50
+
+        // Cột trái
+        PdfPCell cellLeft = new PdfPCell();
+        cellLeft.setBorder(Rectangle.NO_BORDER);
+        cellLeft.addElement(new Paragraph("So Phieu: #" + pdc.getMaPhieuDC(), fontBold));
+        cellLeft.addElement(new Paragraph("Ngay Lap: " + pdc.getNgayChuyen().format(DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")), fontNormal));
+        cellLeft.addElement(new Paragraph("Ly Do: " + (pdc.getGhiChu() != null ? pdc.getGhiChu() : "Dieu chuyen noi bo"), fontNormal));
+        infoTable.addCell(cellLeft);
+
+        // Cột phải (Thông tin kho)
+        PdfPCell cellRight = new PdfPCell();
+        cellRight.setBorder(Rectangle.NO_BORDER);
+        cellRight.addElement(new Paragraph("TU KHO (From): " + khoXuat.getTenKho(), fontNormal));
+        cellRight.addElement(new Paragraph("DEN KHO (To):   " + khoNhap.getTenKho(), fontBold)); // In đậm kho đến cho dễ nhìn
+        infoTable.addCell(cellRight);
+
+        document.add(infoTable);
+        document.add(new Paragraph(" ", fontNormal));
+
+        // 5. Bảng chi tiết
+        // Cột: STT, Tên SP, ĐVT, Số Lô/Hạn, Số Lượng (Thường phiếu chuyển kho không để giá)
+        PdfPTable table = new PdfPTable(5);
+        table.setWidthPercentage(100);
+        table.setWidths(new float[]{0.8f, 4f, 1.5f, 2.5f, 1.5f});
+
+        addCellToTable(table, "STT", fontBold, true);
+        addCellToTable(table, "Ten San Pham", fontBold, true);
+        addCellToTable(table, "DVT", fontBold, true);
+        addCellToTable(table, "So Lo / Han SD", fontBold, true); // Quan trọng để thủ kho lấy đúng hàng
+        addCellToTable(table, "SL Chuyen", fontBold, true);
+
+        int i = 1;
+        DateTimeFormatter dateFmt = DateTimeFormatter.ofPattern("dd/MM/yy");
+
+        for (ChiTietDieuChuyen ct : chiTietList) {
+            // Lấy tên SP (Giả sử bạn đã map SanPham trong entity, nếu chưa thì hiển thị Mã SP)
+            String tenSP = (ct.getSanPham() != null) ? ct.getSanPham().getTenSP() : "Ma SP: " + ct.getMaSP();
+            String dvt = (ct.getSanPham() != null) ? ct.getSanPham().getDonViTinh() : "";
+
+            String loHan = "";
+            if (ct.getSoLo() != null) loHan += "Lo: " + ct.getSoLo();
+            if (ct.getNgayHetHan() != null) loHan += "\nHSD: " + ct.getNgayHetHan().format(dateFmt);
+
+            addCellToTable(table, String.valueOf(i++), fontNormal, false);
+            addCellToTable(table, tenSP, fontNormal, false);
+            addCellToTable(table, dvt, fontNormal, false);
+            addCellToTable(table, loHan, fontNormal, false);
+            addCellToTable(table, String.valueOf(ct.getSoLuong()), fontNormal, false);
+        }
+        document.add(table);
+
+        // 6. Chữ ký (Cần 3 bên: Lập, Kho Xuất, Kho Nhập)
+        document.add(new Paragraph("\n", fontNormal));
+        PdfPTable signTable = new PdfPTable(3);
+        signTable.setWidthPercentage(100);
+
+        addCellSign(signTable, "Nguoi Lap Phieu", fontBold);
+        addCellSign(signTable, "Thu Kho Xuat", fontBold);
+        addCellSign(signTable, "Thu Kho Nhap", fontBold);
+
+        addCellSign(signTable, "(Ky, ho ten)", fontNormal);
+        addCellSign(signTable, "(Ky, ho ten)", fontNormal);
+        addCellSign(signTable, "(Ky, ho ten)", fontNormal);
+
+        document.add(signTable);
+        document.close();
+        return out.toByteArray();
+    }
+
+    // --- Helper Functions ---
+    private void addCellToTable(PdfPTable table, String text, Font font, boolean isHeader) {
+        PdfPCell cell = new PdfPCell(new Phrase(text, font));
+        cell.setPadding(5);
+        cell.setHorizontalAlignment(isHeader ? Element.ALIGN_CENTER : Element.ALIGN_LEFT);
+        if (isHeader) cell.setBackgroundColor(java.awt.Color.LIGHT_GRAY);
+        table.addCell(cell);
+    }
+    private void addCellSign(PdfPTable table, String text, Font font) {
+        PdfPCell cell = new PdfPCell(new Phrase(text, font));
+        cell.setBorder(Rectangle.NO_BORDER);
+        cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        cell.setPaddingTop(10);
+        table.addCell(cell);
     }
 }

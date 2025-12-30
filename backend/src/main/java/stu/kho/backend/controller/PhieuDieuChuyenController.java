@@ -1,6 +1,8 @@
 package stu.kho.backend.controller;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -119,5 +121,20 @@ public class PhieuDieuChuyenController {
     public ResponseEntity<List<PhieuDieuChuyen>> filter(@RequestBody PhieuDieuChuyenFilterRequest request) {
         log.info("REST request to FILTER PhieuDieuChuyen");
         return ResponseEntity.ok(phieuDieuChuyenService.filter(request));
+    }
+    @GetMapping("/{id}/print")
+    public ResponseEntity<byte[]> printPhieuDieuChuyen(@PathVariable Integer id) {
+        try {
+            byte[] pdfBytes = phieuDieuChuyenService.exportPhieuDieuChuyenPdf(id);
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=phieu_dieu_chuyen_" + id + ".pdf")
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .body(pdfBytes);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
     }
 }

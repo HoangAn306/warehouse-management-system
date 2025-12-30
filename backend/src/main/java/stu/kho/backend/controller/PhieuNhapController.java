@@ -1,5 +1,7 @@
 package stu.kho.backend.controller;
 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -130,5 +132,20 @@ public class PhieuNhapController {
     public ResponseEntity<List<PhieuNhapHang>> filter(@RequestBody PhieuNhapFilterRequest request) {
         // (Giả sử bạn đã thêm hàm filter vào Service gọi Repo)
         return ResponseEntity.ok(phieuNhapService.filterPhieuNhap(request));
+    }
+    @GetMapping("/{id}/print")
+    public ResponseEntity<byte[]> printPhieuNhap(@PathVariable Integer id) {
+        try {
+            byte[] pdfBytes = phieuNhapService.exportPhieuNhapPdf(id);
+
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=phieu_nhap_" + id + ".pdf")
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .body(pdfBytes);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
     }
 }

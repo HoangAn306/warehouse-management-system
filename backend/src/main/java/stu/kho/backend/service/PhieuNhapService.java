@@ -1,5 +1,10 @@
 package stu.kho.backend.service;
 
+import com.lowagie.text.*;
+import com.lowagie.text.pdf.BaseFont;
+import com.lowagie.text.pdf.PdfPCell;
+import com.lowagie.text.pdf.PdfPTable;
+import com.lowagie.text.pdf.PdfWriter;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -9,9 +14,12 @@ import stu.kho.backend.dto.PhieuNhapRequest;
 import stu.kho.backend.entity.*;
 import stu.kho.backend.repository.*;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @Service
@@ -28,6 +36,8 @@ public class PhieuNhapService {
     private final NguoiDungRepository nguoiDungRepository;
     private final SanPhamRepository sanPhamRepository;
     private final NccSanPhamRepository nccSanPhamRepository;
+    private final NhaCungCapRepository nhaCungCapRepository; // [MỚI] Để lấy tên NCC
+    private final KhoHangRepository khoHangRepository;
 
     public PhieuNhapService(PhieuNhapRepository phieuNhapRepository,
                             ChiTietPhieuNhapRepository chiTietPhieuNhapRepository,
@@ -35,7 +45,7 @@ public class PhieuNhapService {
                             HoatDongRepository hoatDongRepository,
                             NguoiDungRepository nguoiDungRepository,
                             SanPhamRepository sanPhamRepository,
-                            NccSanPhamRepository nccSanPhamRepository) {
+                            NccSanPhamRepository nccSanPhamRepository, NhaCungCapRepository nhaCungCapRepository, KhoHangRepository khoHangRepository) {
         this.phieuNhapRepository = phieuNhapRepository;
         this.chiTietPhieuNhapRepository = chiTietPhieuNhapRepository;
         this.chiTietKhoRepository = chiTietKhoRepository;
@@ -43,6 +53,8 @@ public class PhieuNhapService {
         this.nguoiDungRepository = nguoiDungRepository;
         this.sanPhamRepository = sanPhamRepository;
         this.nccSanPhamRepository = nccSanPhamRepository;
+        this.nhaCungCapRepository = nhaCungCapRepository;
+        this.khoHangRepository = khoHangRepository;
     }
 
     // =================================================================
@@ -329,6 +341,135 @@ public class PhieuNhapService {
         int tongTonMoi = (sanPham.getSoLuongTon() == null ? 0 : sanPham.getSoLuongTon()) + soLuongThayDoi;
         sanPham.setSoLuongTon(tongTonMoi);
         sanPhamRepository.update(sanPham);
+    }
+
+    // =================================================================
+    // TÍNH NĂNG IN PHIẾU NHẬP (PDF)
+    // =================================================================
+    public byte[] exportPhieuNhapPdf(Integer id) throws DocumentException, IOException {
+        // 1. Lấy dữ liệu
+        PhieuNhapHang pn = getPhieuNhapById(id);
+        NhaCungCap ncc = nhaCungCapRepository.findById(pn.getMaNCC()).orElse(new NhaCungCap());
+        KhoHang kho = khoHangRepository.findById(pn.getMaKho()).orElse(new KhoHang());
+        List<ChiTietPhieuNhap> chiTietList = pn.getChiTiet();
+
+        // 2. Khởi tạo PDF
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Document document = new Document(PageSize.A4);
+        PdfWriter.getInstance(document, out);
+        document.open();
+
+        BaseFont bf = BaseFont.createFont("fonts/times.ttf", BaseFont.IDENTITY_H, BaseFont.EMBEDDED); // Nếu có file font
+
+        Font fontTitle = new Font(bf, 18, Font.BOLD);
+        Font fontBold = new Font(bf, 11, Font.BOLD);
+        Font fontNormal = new Font(bf, 11, Font.NORMAL);
+
+        // 3. Tiêu đề
+        Paragraph title = new Paragraph("PHIEU NHAP KHO (IMPORT NOTE)", fontTitle);
+        title.setAlignment(Element.ALIGN_CENTER);
+        document.add(title);
+        document.add(new Paragraph(" ", fontNormal));
+
+        // 4. Thông tin chung (NCC và Kho)
+        PdfPTable infoTable = new PdfPTable(2);
+        infoTable.setWidthPercentage(100);
+
+        addTextToTable(infoTable, "Ma Phieu: #" + pn.getMaPhieuNhap(), fontBold);
+        addTextToTable(infoTable, "Ngay Lap: " + pn.getNgayLapPhieu().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), fontNormal);
+
+        addTextToTable(infoTable, "Nha Cung Cap: " + ncc.getTenNCC(), fontNormal);
+        addTextToTable(infoTable, "SDT: " + (ncc.getSdt() != null ? ncc.getSdt() : ""), fontNormal);
+
+        addTextToTable(infoTable, "Nhap Tai Kho: " + kho.getTenKho(), fontNormal);
+        addTextToTable(infoTable, "Dia Chi: " + (kho.getDiaChi() != null ? kho.getDiaChi() : ""), fontNormal);
+
+        document.add(infoTable);
+        document.add(new Paragraph(" ", fontNormal));
+
+        // 5. Bảng chi tiết (Thêm cột Hạn Sử Dụng)
+        // Cột: STT, Tên SP, ĐVT, Lô/Hạn, SL, Đơn Giá, Thành Tiền
+        PdfPTable table = new PdfPTable(7);
+        table.setWidthPercentage(100);
+        table.setWidths(new float[]{0.8f, 3.5f, 1.2f, 2.5f, 1.2f, 2f, 2.5f});
+
+        addCellToTable(table, "STT", fontBold, true);
+        addCellToTable(table, "Ten Hang", fontBold, true);
+        addCellToTable(table, "DVT", fontBold, true);
+        addCellToTable(table, "Lo / Han SD", fontBold, true); // Quan trọng với phiếu nhập
+        addCellToTable(table, "SL", fontBold, true);
+        addCellToTable(table, "Don Gia", fontBold, true);
+        addCellToTable(table, "Thanh Tien", fontBold, true);
+
+        int i = 1;
+        DateTimeFormatter dateFmt = DateTimeFormatter.ofPattern("dd/MM/yy");
+
+        for (ChiTietPhieuNhap ct : chiTietList) {
+            String tenSP = "SP #" + ct.getMaSP();
+            // Nếu bạn đã map object SanPham vào ChiTietPhieuNhap thì dùng: ct.getSanPham().getTenSP()
+
+            String loHan = "";
+            if (ct.getSoLo() != null) loHan += "Lo: " + ct.getSoLo();
+            if (ct.getNgayHetHan() != null) loHan += "\nHSD: " + ct.getNgayHetHan().format(dateFmt);
+
+            addCellToTable(table, String.valueOf(i++), fontNormal, false);
+            addCellToTable(table, tenSP, fontNormal, false);
+            addCellToTable(table, "", fontNormal, false); // ĐVT (nếu có thì điền vào)
+            addCellToTable(table, loHan, fontNormal, false);
+            addCellToTable(table, String.valueOf(ct.getSoLuong()), fontNormal, false);
+            addCellToTable(table, formatMoney(ct.getDonGia()), fontNormal, false);
+            addCellToTable(table, formatMoney(ct.getThanhTien()), fontNormal, false);
+        }
+        document.add(table);
+
+        // 6. Tổng tiền
+        Paragraph totalPara = new Paragraph("Tong Cong: " + formatMoney(pn.getTongTien()), fontBold);
+        totalPara.setAlignment(Element.ALIGN_RIGHT);
+        totalPara.setSpacingBefore(10);
+        document.add(totalPara);
+
+        // 7. Chữ ký
+        document.add(new Paragraph("\n", fontNormal));
+        PdfPTable signTable = new PdfPTable(3);
+        signTable.setWidthPercentage(100);
+
+        addCellSign(signTable, "Nguoi Lap Phieu", fontBold);
+        addCellSign(signTable, "Thu Kho", fontBold);
+        addCellSign(signTable, "Nha Cung Cap", fontBold);
+
+        addCellSign(signTable, "(Ky, ho ten)", fontNormal);
+        addCellSign(signTable, "(Ky, ho ten)", fontNormal);
+        addCellSign(signTable, "(Ky, ho ten)", fontNormal);
+
+        document.add(signTable);
+        document.close();
+        return out.toByteArray();
+    }
+
+    // --- Các hàm Helper (Copy y hệt bên Phiếu Xuất) ---
+    private void addTextToTable(PdfPTable table, String text, Font font) {
+        PdfPCell cell = new PdfPCell(new Phrase(text, font));
+        cell.setBorder(Rectangle.NO_BORDER);
+        cell.setPadding(3);
+        table.addCell(cell);
+    }
+    private void addCellToTable(PdfPTable table, String text, Font font, boolean isHeader) {
+        PdfPCell cell = new PdfPCell(new Phrase(text, font));
+        cell.setPadding(5);
+        cell.setHorizontalAlignment(isHeader ? Element.ALIGN_CENTER : Element.ALIGN_LEFT);
+        if (isHeader) cell.setBackgroundColor(java.awt.Color.LIGHT_GRAY);
+        table.addCell(cell);
+    }
+    private void addCellSign(PdfPTable table, String text, Font font) {
+        PdfPCell cell = new PdfPCell(new Phrase(text, font));
+        cell.setBorder(Rectangle.NO_BORDER);
+        cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        cell.setPaddingTop(10);
+        table.addCell(cell);
+    }
+    private String formatMoney(java.math.BigDecimal money) {
+        if (money == null) return "0";
+        return String.format("%,.0f", money);
     }
 
     private void logActivity(Integer maNguoiDung, String hanhDong) {

@@ -1,5 +1,7 @@
 package stu.kho.backend.controller;
 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -109,6 +111,22 @@ public class PhieuXuatController {
             return ResponseEntity.ok(phieuXuatService.createPhieuXuatForGiangVien(request, authentication.getName()));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
+        }
+    }
+    @GetMapping("/{id}/print")
+    public ResponseEntity<byte[]> printPhieuXuat(@PathVariable Integer id) {
+        try {
+            byte[] pdfBytes = phieuXuatService.exportPhieuXuatPdf(id);
+
+            return ResponseEntity.ok()
+                    // Tên file tải về: phieu_xuat_105.pdf
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=phieu_xuat_" + id + ".pdf")
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .body(pdfBytes);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
         }
     }
 }

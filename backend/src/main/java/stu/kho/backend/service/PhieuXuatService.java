@@ -1,5 +1,10 @@
 package stu.kho.backend.service;
 
+import com.lowagie.text.*;
+import com.lowagie.text.pdf.BaseFont;
+import com.lowagie.text.pdf.PdfPCell;
+import com.lowagie.text.pdf.PdfPTable;
+import com.lowagie.text.pdf.PdfWriter;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -11,9 +16,12 @@ import stu.kho.backend.dto.PhieuXuatRequest;
 import stu.kho.backend.entity.*;
 import stu.kho.backend.repository.*;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 
@@ -32,6 +40,7 @@ public class PhieuXuatService {
     private final SanPhamRepository sanPhamRepository;
     private final KhachHangRepository khachHangRepository;
     private final JdbcTemplate jdbcTemplate;
+    private final KhoHangRepository khoHangRepository;     // [MỚI] Lấy tên Kho
 
     public PhieuXuatService(PhieuXuatRepository phieuXuatRepository,
                             ChiTietPhieuXuatRepository chiTietPhieuXuatRepository,
@@ -40,7 +49,7 @@ public class PhieuXuatService {
                             NguoiDungRepository nguoiDungRepository,
                             SanPhamRepository sanPhamRepository,
                             KhachHangRepository khachHangRepository,
-                            JdbcTemplate jdbcTemplate) {
+                            JdbcTemplate jdbcTemplate, KhoHangRepository khoHangRepository) {
         this.phieuXuatRepository = phieuXuatRepository;
         this.chiTietPhieuXuatRepository = chiTietPhieuXuatRepository;
         this.chiTietKhoRepository = chiTietKhoRepository;
@@ -49,6 +58,7 @@ public class PhieuXuatService {
         this.sanPhamRepository = sanPhamRepository;
         this.khachHangRepository = khachHangRepository;
         this.jdbcTemplate = jdbcTemplate;
+        this.khoHangRepository = khoHangRepository;
     }
 
     // =================================================================
@@ -393,5 +403,132 @@ public class PhieuXuatService {
         hd.setHanhDong(act);
         hd.setThoiGianThucHien(java.time.LocalDateTime.now());
         hoatDongRepository.save(hd);
+    }
+    // =================================================================
+    // TÍNH NĂNG IN PHIẾU XUẤT (PDF)
+    // =================================================================
+    public byte[] exportPhieuXuatPdf(Integer id) throws DocumentException, IOException {
+        // 1. Lấy dữ liệu
+        PhieuXuatHang px = getPhieuXuatById(id); // Hàm lấy chi tiết cũ của bạn
+        KhachHang kh = khachHangRepository.findById(px.getMaKH()).orElse(new KhachHang());
+        KhoHang kho = khoHangRepository.findById(px.getMaKho()).orElse(new KhoHang());
+        List<ChiTietPhieuXuat> chiTietList = px.getChiTiet();
+
+        // 2. Khởi tạo PDF
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        Document document = new Document(PageSize.A4);
+        PdfWriter.getInstance(document, out);
+        document.open();
+
+        // Font chữ
+        BaseFont bf = BaseFont.createFont("fonts/times.ttf", BaseFont.IDENTITY_H, BaseFont.EMBEDDED); // Nếu có file font
+        // BaseFont bf = BaseFont.createFont("fonts/arial.ttf", BaseFont.IDENTITY_H, BaseFont.EMBEDDED); // Nếu có font
+
+        Font fontTitle = new Font(bf, 18, Font.BOLD);
+        Font fontBold = new Font(bf, 11, Font.BOLD);
+        Font fontNormal = new Font(bf, 11, Font.NORMAL);
+
+        // 3. Tiêu đề
+        Paragraph title = new Paragraph("PHIEU XUAT KHO (EXPORT NOTE)", fontTitle);
+        title.setAlignment(Element.ALIGN_CENTER);
+        document.add(title);
+        document.add(new Paragraph(" ", fontNormal));
+
+        // 4. Thông tin chung (Khách Hàng & Kho)
+        PdfPTable infoTable = new PdfPTable(2);
+        infoTable.setWidthPercentage(100);
+
+        addTextToTable(infoTable, "Ma Phieu: #" + px.getMaPhieuXuat(), fontBold);
+        addTextToTable(infoTable, "Ngay Lap: " + px.getNgayLapPhieu().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), fontNormal);
+
+        addTextToTable(infoTable, "Khach Hang: " + kh.getTenKH(), fontNormal);
+        addTextToTable(infoTable, "SDT: " + (kh.getSdt() != null ? kh.getSdt() : ""), fontNormal);
+
+        addTextToTable(infoTable, "Xuat Tai Kho: " + kho.getTenKho(), fontNormal);
+        addTextToTable(infoTable, "Dia Chi: " + (kh.getDiaChi() != null ? kh.getDiaChi() : ""), fontNormal);
+
+        document.add(infoTable);
+        document.add(new Paragraph(" ", fontNormal));
+
+        // 5. Bảng chi tiết
+        // Cột: STT, Tên SP, ĐVT, Số Lô, SL, Đơn Giá, Thành Tiền
+        PdfPTable table = new PdfPTable(7);
+        table.setWidthPercentage(100);
+        // Chỉnh độ rộng cột cho cân đối
+        table.setWidths(new float[]{0.8f, 3.5f, 1.2f, 2.0f, 1.2f, 2f, 2.5f});
+
+        addCellToTable(table, "STT", fontBold, true);
+        addCellToTable(table, "Ten Hang", fontBold, true);
+        addCellToTable(table, "DVT", fontBold, true);
+        addCellToTable(table, "So Lo (Batch)", fontBold, true); // Quan trọng
+        addCellToTable(table, "SL", fontBold, true);
+        addCellToTable(table, "Don Gia", fontBold, true);
+        addCellToTable(table, "Thanh Tien", fontBold, true);
+
+        int i = 1;
+        for (ChiTietPhieuXuat ct : chiTietList) {
+            String tenSP = "SP #" + ct.getMaSP();
+            // Nếu có object SanPham: String tenSP = ct.getSanPham().getTenSP();
+
+            String soLo = (ct.getSoLo() != null) ? ct.getSoLo() : "";
+
+            addCellToTable(table, String.valueOf(i++), fontNormal, false);
+            addCellToTable(table, tenSP, fontNormal, false);
+            addCellToTable(table, "", fontNormal, false); // ĐVT
+            addCellToTable(table, soLo, fontNormal, false);
+            addCellToTable(table, String.valueOf(ct.getSoLuong()), fontNormal, false);
+            addCellToTable(table, formatMoney(ct.getDonGia()), fontNormal, false);
+            addCellToTable(table, formatMoney(ct.getThanhTien()), fontNormal, false);
+        }
+        document.add(table);
+
+        // 6. Tổng tiền
+        Paragraph totalPara = new Paragraph("Tong Cong: " + formatMoney(px.getTongTien()), fontBold);
+        totalPara.setAlignment(Element.ALIGN_RIGHT);
+        totalPara.setSpacingBefore(10);
+        document.add(totalPara);
+
+        // 7. Chữ ký
+        document.add(new Paragraph("\n", fontNormal));
+        PdfPTable signTable = new PdfPTable(3);
+        signTable.setWidthPercentage(100);
+
+        addCellSign(signTable, "Nguoi Lap Phieu", fontBold);
+        addCellSign(signTable, "Nguoi Giao Hang", fontBold);
+        addCellSign(signTable, "Khach Hang", fontBold); // Khác phiếu nhập
+
+        addCellSign(signTable, "(Ky, ho ten)", fontNormal);
+        addCellSign(signTable, "(Ky, ho ten)", fontNormal);
+        addCellSign(signTable, "(Ky, ho ten)", fontNormal);
+
+        document.add(signTable);
+        document.close();
+        return out.toByteArray();
+    }
+
+    // --- Helper Functions (Giống hệt bên PhieuNhapService) ---
+    private void addTextToTable(PdfPTable table, String text, Font font) {
+        PdfPCell cell = new PdfPCell(new Phrase(text, font));
+        cell.setBorder(Rectangle.NO_BORDER);
+        cell.setPadding(3);
+        table.addCell(cell);
+    }
+    private void addCellToTable(PdfPTable table, String text, Font font, boolean isHeader) {
+        PdfPCell cell = new PdfPCell(new Phrase(text, font));
+        cell.setPadding(5);
+        cell.setHorizontalAlignment(isHeader ? Element.ALIGN_CENTER : Element.ALIGN_LEFT);
+        if (isHeader) cell.setBackgroundColor(java.awt.Color.LIGHT_GRAY);
+        table.addCell(cell);
+    }
+    private void addCellSign(PdfPTable table, String text, Font font) {
+        PdfPCell cell = new PdfPCell(new Phrase(text, font));
+        cell.setBorder(Rectangle.NO_BORDER);
+        cell.setHorizontalAlignment(Element.ALIGN_CENTER);
+        cell.setPaddingTop(10);
+        table.addCell(cell);
+    }
+    private String formatMoney(java.math.BigDecimal money) {
+        if (money == null) return "0";
+        return String.format("%,.0f", money);
     }
 }
