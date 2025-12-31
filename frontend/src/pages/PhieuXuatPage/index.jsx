@@ -19,7 +19,7 @@ import {
   Card,
   DatePicker,
   Tooltip,
-  Grid, // [1] Import Grid
+  Grid,
 } from "antd";
 import {
   PlusOutlined,
@@ -32,6 +32,7 @@ import {
   EyeOutlined,
   SearchOutlined,
   ClearOutlined,
+  PrinterOutlined, // [MỚI] Import icon in
 } from "@ant-design/icons";
 import * as phieuXuatService from "../../services/phieuxuat.service";
 import * as warehouseService from "../../services/warehouse.service";
@@ -53,12 +54,9 @@ const PERM_CANCEL = 43;
 const PERM_EDIT_APPROVED = 121;
 
 const PhieuXuatPage = () => {
-  // [2] Hook kiểm tra màn hình
   const screens = Grid.useBreakpoint();
 
   const [listData, setListData] = useState([]);
-
-  // State phân trang
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 5,
@@ -67,7 +65,6 @@ const PhieuXuatPage = () => {
     pageSizeOptions: ["5", "10", "20", "50"],
   });
 
-  // State bộ lọc
   const [filter, setFilter] = useState({
     chungTu: "",
     trangThai: null,
@@ -96,7 +93,6 @@ const PhieuXuatPage = () => {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [viewingPhieuXuat, setViewingPhieuXuat] = useState(null);
 
-  // State quyền hạn
   const [permissions, setPermissions] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLecturer, setIsLecturer] = useState(false);
@@ -232,9 +228,7 @@ const PhieuXuatPage = () => {
   }, []);
 
   // --- HANDLERS ---
-  const handleSearch = () => {
-    fetchData(1, pagination.pageSize, filter);
-  };
+  const handleSearch = () => fetchData(1, pagination.pageSize, filter);
   const handleResetFilter = () => {
     const emptyFilter = {
       chungTu: "",
@@ -246,9 +240,8 @@ const PhieuXuatPage = () => {
     setFilter(emptyFilter);
     fetchData(1, 5, emptyFilter);
   };
-  const handleTableChange = (newPagination) => {
+  const handleTableChange = (newPagination) =>
     fetchData(newPagination.current, newPagination.pageSize, filter);
-  };
 
   const checkPerm = (id) => isAdmin || permissions.includes(id);
 
@@ -270,6 +263,31 @@ const PhieuXuatPage = () => {
     if (status === 2) return <Tag color="green">Đã duyệt</Tag>;
     if (status === 3) return <Tag color="red">Không duyệt</Tag>;
     return status;
+  };
+
+  // [MỚI] Hàm xử lý in phiếu xuất
+  const handlePrint = async (id) => {
+    try {
+      messageApi.loading({ content: "Đang tải file in...", key: "print" });
+      const response = await phieuXuatService.printPhieuXuat(id);
+
+      // Tạo URL từ blob trả về
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      // Đặt tên file khi tải về
+      link.setAttribute("download", `PhieuXuat_${id}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+
+      // Dọn dẹp
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      messageApi.success({ content: "Tải file in thành công!", key: "print" });
+    } catch (error) {
+      console.error(error);
+      messageApi.error({ content: "Lỗi khi in phiếu!", key: "print" });
+    }
   };
 
   const handleOpenModal = () => {
@@ -294,7 +312,6 @@ const PhieuXuatPage = () => {
   };
 
   const handleEdit = async (record) => {
-    // 1. Kiểm tra quyền và trạng thái (Giữ nguyên)
     if (record.trangThai === 2) {
       const createdDate = dayjs(record.ngayLapPhieu);
       const diffDays = dayjs().diff(createdDate, "day");
@@ -314,22 +331,19 @@ const PhieuXuatPage = () => {
     }
 
     try {
-      // 2. Lấy dữ liệu chi tiết
       const response = await phieuXuatService.getPhieuXuatById(
         record.maPhieuXuat
       );
       const fullData = response.data;
 
-      // [THÊM MỚI] Xử lý ẩn chữ PENDING trong danh sách chi tiết
+      // Xử lý ẩn chữ PENDING
       if (fullData.chiTiet && Array.isArray(fullData.chiTiet)) {
         fullData.chiTiet = fullData.chiTiet.map((item) => ({
           ...item,
-          // Nếu là PENDING thì trả về null để form hiển thị trống, ngược lại giữ nguyên
           soLo: item.soLo === "PENDING" ? null : item.soLo,
         }));
       }
 
-      // 3. Đưa dữ liệu vào form
       setEditingRecord(fullData);
       if (fullData.maKho) handleKhoChange(fullData.maKho);
       form.setFieldsValue(fullData);
@@ -416,7 +430,6 @@ const PhieuXuatPage = () => {
     }
   };
 
-  // --- CẤU HÌNH CỘT RESPONSIVE ---
   const columns = [
     {
       title: "Ngày Lập",
@@ -469,7 +482,7 @@ const PhieuXuatPage = () => {
     {
       title: "Hành động",
       key: "action",
-      width: 200,
+      width: 220, // Tăng width để chứa nút in
       fixed: screens.lg ? "right" : null,
       align: "center",
       render: (_, record) => {
@@ -484,6 +497,15 @@ const PhieuXuatPage = () => {
             size="small"
             wrap={false}
           >
+            {/* [MỚI] Nút In phiếu */}
+            <Tooltip title="In phiếu">
+              <Button
+                icon={<PrinterOutlined />}
+                size="small"
+                onClick={() => handlePrint(record.maPhieuXuat)}
+              />
+            </Tooltip>
+
             <Tooltip title="Xem chi tiết">
               <Button
                 icon={<EyeOutlined />}
@@ -554,9 +576,7 @@ const PhieuXuatPage = () => {
         style={{ marginBottom: 16 }}
         bodyStyle={{ padding: "16px" }}
       >
-        {/* BỘ LỌC RESPONSIVE - ĐÃ CÂN CHỈNH LẠI CỘT ĐỂ KHÔNG BỊ DÍNH */}
         <Row gutter={[16, 16]}>
-          {/* 1. Mã chứng từ: Giảm xuống 3 */}
           <Col
             xs={24}
             md={3}
@@ -571,8 +591,6 @@ const PhieuXuatPage = () => {
               }
             />
           </Col>
-
-          {/* 2. Trạng thái: Giảm xuống 3 */}
           <Col
             xs={24}
             md={3}
@@ -590,8 +608,6 @@ const PhieuXuatPage = () => {
               <Option value={3}>Không duyệt</Option>
             </Select>
           </Col>
-
-          {/* 3. Kho xuất: Giữ 4 */}
           <Col
             xs={24}
             md={4}
@@ -614,8 +630,6 @@ const PhieuXuatPage = () => {
               ))}
             </Select>
           </Col>
-
-          {/* 4. Khách hàng: Giữ 4 */}
           <Col
             xs={24}
             md={4}
@@ -638,8 +652,6 @@ const PhieuXuatPage = () => {
               ))}
             </Select>
           </Col>
-
-          {/* 5. Ngày lập phiếu: Tăng lên 6 để hiển thị thoải mái */}
           <Col
             xs={24}
             md={6}
@@ -653,8 +665,6 @@ const PhieuXuatPage = () => {
               onChange={(dates) => setFilter({ ...filter, dateRange: dates })}
             />
           </Col>
-
-          {/* 6. Nút bấm: Tăng lên 4 để tách biệt với ngày lập */}
           <Col
             xs={24}
             md={4}
@@ -862,7 +872,7 @@ const PhieuXuatPage = () => {
                         {...restField}
                         name={[name, "soLo"]}
                         label={!screens.md ? "Số lô" : null}
-                        rules={[{ message: "Nhập lô" }]}
+                        // Xóa rules required để không bắt buộc nhập khi sửa
                         style={{ marginBottom: 0 }}
                       >
                         <Input placeholder="Số lô" />

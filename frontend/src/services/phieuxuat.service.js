@@ -45,3 +45,6 @@ export const filterPhieuXuat = (data) => {
 export const createPhieuXuatGiangVien = (data) => {
   return api.post(`${API_ENDPOINT}/giangvien/create`, data);
 };
+export const printPhieuXuat = (id) => {
+  return api.get(`${API_ENDPOINT}/${id}/print`, { responseType: "blob" });
+};

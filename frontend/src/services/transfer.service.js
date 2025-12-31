@@ -30,6 +30,8 @@ export const updateTransfer = (id, data) => {
   return api.put(`${API_ENDPOINT}/${id}`, data);
 };
 export const filterTransfers = (data) => {
-  // data: { chungTu, trangThai, maKhoXuat, maKhoNhap, fromDate, toDate, page, size }
   return api.post(`${API_ENDPOINT}/filter`, data);
+};
+export const printTransfer = (id) => {
+  return api.get(`${API_ENDPOINT}/${id}/print`, { responseType: "blob" });
 };

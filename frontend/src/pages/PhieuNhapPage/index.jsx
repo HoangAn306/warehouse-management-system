@@ -32,6 +32,7 @@ import {
   EyeOutlined,
   SearchOutlined,
   ClearOutlined,
+  PrinterOutlined, // [MỚI] Import icon in
 } from "@ant-design/icons";
 import * as phieuNhapService from "../../services/phieunhap.service";
 import * as warehouseService from "../../services/warehouse.service";
@@ -54,7 +55,6 @@ const PERM_EDIT_APPROVED = 120;
 
 const PhieuNhapPage = () => {
   // [2] Hook kiểm tra màn hình
-  // screens.lg = true (>= 992px) -> PC/Laptop. False -> Mobile/Tablet.
   const screens = Grid.useBreakpoint();
 
   const [listData, setListData] = useState([]);
@@ -313,6 +313,31 @@ const PhieuNhapPage = () => {
     }
   };
 
+  // [MỚI] Hàm xử lý in phiếu
+  const handlePrint = async (id) => {
+    try {
+      messageApi.loading({ content: "Đang tải file in...", key: "print" });
+      const response = await phieuNhapService.printPhieuNhap(id);
+
+      // Tạo URL từ blob trả về
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      // Đặt tên file khi tải về
+      link.setAttribute("download", `PhieuNhap_${id}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+
+      // Dọn dẹp
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      messageApi.success({ content: "Tải file in thành công!", key: "print" });
+    } catch (error) {
+      console.error(error);
+      messageApi.error({ content: "Lỗi khi in phiếu!", key: "print" });
+    }
+  };
+
   const handleOk = () => {
     form
       .validateFields()
@@ -434,7 +459,7 @@ const PhieuNhapPage = () => {
     {
       title: "Hành động",
       key: "action",
-      width: 200, // Tăng width để chứa đủ các nút
+      width: 220, // Tăng width để chứa đủ các nút
       fixed: screens.lg ? "right" : null, // Ghim phải trên PC
       align: "center",
       render: (_, record) => {
@@ -449,6 +474,15 @@ const PhieuNhapPage = () => {
             size="small"
             wrap={false}
           >
+            {/* [MỚI] Nút In phiếu */}
+            <Tooltip title="In phiếu">
+              <Button
+                icon={<PrinterOutlined />}
+                size="small"
+                onClick={() => handlePrint(record.maPhieuNhap)}
+              />
+            </Tooltip>
+
             <Tooltip title="Xem chi tiết">
               <Button
                 icon={<EyeOutlined />}

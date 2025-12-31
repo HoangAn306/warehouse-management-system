@@ -40,3 +40,6 @@ export const getPhieuNhapById = (id) => {
 export const filterPhieuNhap = (data) => {
   return api.post(`${API_ENDPOINT}/filter`, data);
 };
+export const printPhieuNhap = (id) => {
+  return api.get(`${API_ENDPOINT}/${id}/print`, { responseType: "blob" });
+};

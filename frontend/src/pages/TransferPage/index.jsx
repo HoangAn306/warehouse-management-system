@@ -32,6 +32,7 @@ import {
   SearchOutlined,
   ClearOutlined,
   MinusCircleOutlined,
+  PrinterOutlined, // [MỚI] Import icon in
 } from "@ant-design/icons";
 import * as transferService from "../../services/transfer.service";
 import * as warehouseService from "../../services/warehouse.service";
@@ -372,6 +373,31 @@ const TransferPage = () => {
     }
   };
 
+  // [MỚI] Hàm xử lý in phiếu điều chuyển
+  const handlePrint = async (id) => {
+    try {
+      messageApi.loading({ content: "Đang tải file in...", key: "print" });
+      const response = await transferService.printTransfer(id);
+
+      // Tạo URL từ blob trả về
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      // Đặt tên file khi tải về
+      link.setAttribute("download", `PhieuDieuChuyen_${id}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+
+      // Dọn dẹp
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      messageApi.success({ content: "Tải file in thành công!", key: "print" });
+    } catch (error) {
+      console.error(error);
+      messageApi.error({ content: "Lỗi khi in phiếu!", key: "print" });
+    }
+  };
+
   const handleApprove = async (id) => {
     try {
       await transferService.approveTransfer(id);
@@ -449,7 +475,7 @@ const TransferPage = () => {
     {
       title: "Hành động",
       key: "action",
-      width: 200,
+      width: 220, // Tăng width để chứa đủ các nút
       fixed: screens.lg ? "right" : null, // Ghim phải trên PC
       align: "center",
       render: (_, record) => {
@@ -464,6 +490,15 @@ const TransferPage = () => {
             size="small"
             wrap={false}
           >
+            {/* [MỚI] Nút In phiếu */}
+            <Tooltip title="In phiếu">
+              <Button
+                icon={<PrinterOutlined />}
+                size="small"
+                onClick={() => handlePrint(record.maPhieuDC)}
+              />
+            </Tooltip>
+
             <Tooltip title="Xem chi tiết">
               <Button
                 icon={<EyeOutlined />}
@@ -777,12 +812,12 @@ const TransferPage = () => {
             />
           </Form.Item>
 
-          {/* <Divider
+          <Divider
             orientation="left"
             style={{ borderColor: "#faad14", color: "#faad14" }}
           >
             DANH SÁCH HÀNG HÓA
-          </Divider> */}
+          </Divider>
 
           {/* HEADER FORM LIST RESPONSIVE */}
           {screens.md && (
@@ -861,10 +896,9 @@ const TransferPage = () => {
                         {...restField}
                         name={[name, "soLo"]}
                         label={!screens.md ? "Số lô" : null}
-                        rules={[{ message: "Nhập lô" }]}
                         style={{ marginBottom: 0 }}
                       >
-                        <Input placeholder="Số lô" />
+                        <Input placeholder="Số lô (Trống)" />
                       </Form.Item>
                     </Col>
 
@@ -997,9 +1031,10 @@ const TransferPage = () => {
                   render: (id) => getSPName(id),
                 },
                 {
-                  title: "Số Lô", // [MỚI] Hiển thị cột số lô
+                  title: "Số Lô",
                   dataIndex: "soLo",
                   align: "center",
+                  render: (val) => (val !== "PENDING" ? val : "-"),
                 },
                 {
                   title: "Số Lượng",
