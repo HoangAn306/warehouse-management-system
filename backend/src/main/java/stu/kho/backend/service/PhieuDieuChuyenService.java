@@ -488,7 +488,7 @@ public class PhieuDieuChuyenService {
 
         // 6. Chữ ký (Cần 3 bên: Lập, Kho Xuất, Kho Nhập)
         document.add(new Paragraph("\n", fontNormal));
-        PdfPTable signTable = new PdfPTable(3);
+        PdfPTable signTable = new PdfPTable(2);
         signTable.setWidthPercentage(100);
 
         addCellSign(signTable, "Người Lập Phiếu", fontBold);
