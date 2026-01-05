@@ -3,7 +3,7 @@ package stu.kho.backend.service;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional; // <-- Import quan trọng
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import stu.kho.backend.dto.SanPhamFilterRequest;
@@ -24,7 +24,7 @@ public class SanPhamService {
     private final HoatDongRepository hoatDongRepository;
     private final NguoiDungRepository nguoiDungRepository;
     private final CloudinaryService cloudinaryService;
-    private final LoaiHangRepository loaiHangRepository; // Cần inject thêm cái này// Service upload ảnh
+    private final LoaiHangRepository loaiHangRepository;
 
     public SanPhamService(SanPhamRepository sanPhamRepository,
                           NccSanPhamRepository nccSanPhamRepository,
@@ -44,7 +44,9 @@ public class SanPhamService {
     // =================================================================
     @Transactional
     public SanPham createSanPham(SanPhamRequest request, MultipartFile imageFile, String tenNguoiTao) {
-        validateProductUniqueness(request);
+        // [CẬP NHẬT] Truyền null vì tạo mới chưa có ID
+        validateProductUniqueness(request, null);
+        
         // 1. Tạo đối tượng SanPham
         SanPham sp = new SanPham();
         sp.setTenSP(request.getTenSP());
@@ -85,6 +87,9 @@ public class SanPhamService {
     // =================================================================
     @Transactional
     public SanPham updateSanPham(Integer id, SanPhamRequest request, MultipartFile imageFile, String tenNguoiSua) {
+        // [CẬP NHẬT] Truyền ID hiện tại để loại trừ khi check trùng tên
+        validateProductUniqueness(request, id);
+
         SanPham spCu = sanPhamRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy sản phẩm ID: " + id));
 
@@ -132,7 +137,6 @@ public class SanPhamService {
                 .orElseThrow(() -> new RuntimeException("Sản phẩm không tồn tại."));
 
         // --- BỔ SUNG: CHECK TỒN KHO TRƯỚC KHI XÓA ---
-        // (Yêu cầu phải có hàm countTotalInventory trong Repository như đã hướng dẫn trước đó)
         int tongTon = sanPhamRepository.countTotalInventory(id);
 
         if (tongTon > 0) {
@@ -175,24 +179,28 @@ public class SanPhamService {
         return sanPhamRepository.filter(request);
     }
 
-    private void validateProductUniqueness(SanPhamRequest request) {
-        // BƯỚC 1: Lấy tên sản phẩm từ request và cắt khoảng trắng thừa (để tránh lỗi " ABC" khác "ABC")
+    // [CẬP NHẬT] Logic check trùng tên có hỗ trợ update
+    private void validateProductUniqueness(SanPhamRequest request, Integer currentId) {
+        // BƯỚC 1: Lấy tên sản phẩm từ request và cắt khoảng trắng thừa
         String tenSpCheck = request.getTenSP().trim();
 
         // BƯỚC 2: Tìm tất cả sản phẩm đang hoạt động (Chưa xóa) có cùng tên
-        // Hàm này trả về list các sản phẩm có tên trùng khớp
         List<SanPham> existingProducts = sanPhamRepository.findByTenSP(tenSpCheck);
 
-        // BƯỚC 3: Kiểm tra đơn giản
-        // Nếu danh sách KHÔNG rỗng => Nghĩa là đã có ít nhất 1 sản phẩm trùng tên
-        if (!existingProducts.isEmpty()) {
+        // BƯỚC 3: Kiểm tra trùng lặp
+        for (SanPham sp : existingProducts) {
+            // Nếu đang UPDATE (currentId != null) và sản phẩm tìm thấy chính là sản phẩm đang sửa -> Bỏ qua
+            if (currentId != null && sp.getMaSP().equals(currentId)) {
+                continue; 
+            }
+
+            // Nếu tìm thấy một sản phẩm KHÁC có cùng tên -> Báo lỗi ngay
             throw new RuntimeException(
                 "Lỗi trùng lặp: Tên sản phẩm '" + tenSpCheck + "' đã tồn tại trong hệ thống. Vui lòng chọn tên khác!"
             );
         }
-        
-        // Nếu code chạy đến đây nghĩa là không trùng, cho phép đi tiếp...
     }
+
     public List<SanPham> getTrash() {
         return sanPhamRepository.findAllDeleted();
     }
