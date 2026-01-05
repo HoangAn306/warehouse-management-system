@@ -477,8 +477,8 @@ const SupplierPage = () => {
         >
           <Form.Item
             name="tenNCC"
-            label="Tên NCC"
-            rules={[{ required: true }]}
+            label="Tên Nhà Cung Cấp"
+            rules={[{ required: true, message:"Nhập tên nhà cung cấp" }]}
           >
             <Input />
           </Form.Item>
@@ -491,7 +491,7 @@ const SupplierPage = () => {
           <Form.Item
             name="sdt"
             label="Số Điện Thoại"
-            rules={[{ required: true }]}
+            rules={[{ required: true , message:"Nhập số điện thoại"}]}
           >
             <Input />
           </Form.Item>

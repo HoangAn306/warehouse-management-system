@@ -100,7 +100,9 @@ const ProductPage = () => {
           const matchLoai = !filter.maLoai || item.maLoai === filter.maLoai;
           const matchNCC =
             !filter.maNCC ||
-            (item.danhSachMaNCC && item.danhSachMaNCC.includes(filter.maNCC));
+            (item.danhSachNCC && 
+             Array.isArray(item.danhSachNCC) && 
+             item.danhSachNCC.some(ncc => ncc.maNCC === filter.maNCC));
 
           return matchName && matchLoai && matchNCC;
         });
@@ -179,11 +181,31 @@ const ProductPage = () => {
 
   const handleEdit = (record) => {
     setEditingProduct(record);
+
+    // 1. Xử lý hiển thị ảnh cũ
     const images = record.hinhAnh
       ? [{ uid: "-1", name: "image.png", status: "done", url: record.hinhAnh }]
       : [];
     setFileList(images);
-    form.setFieldsValue(record);
+
+    // [FIX QUAN TRỌNG] Xử lý Nhà cung cấp
+    // Form cần mảng ID [1, 2], nhưng record có thể là mảng đối tượng [{maNCC:1}, {maNCC:2}]
+    let selectedNCCs = [];
+    
+    if (record.danhSachNCC && Array.isArray(record.danhSachNCC)) {
+        // Trường hợp record chứa danh sách chi tiết (thường thấy khi lấy GetAll)
+        selectedNCCs = record.danhSachNCC.map(ncc => ncc.maNCC);
+    } else if (record.danhSachMaNCC && Array.isArray(record.danhSachMaNCC)) {
+        // Trường hợp record chứa sẵn mảng ID
+        selectedNCCs = record.danhSachMaNCC;
+    }
+
+    // Đổ dữ liệu vào Form
+    form.setFieldsValue({
+      ...record,
+      danhSachMaNCC: selectedNCCs, // Gán đè giá trị đã xử lý vào trường này
+    });
+
     setIsModalVisible(true);
   };
 
@@ -211,7 +233,19 @@ const ProductPage = () => {
           setIsModalVisible(false);
           fetchProducts();
         } catch (error) {
-          messageApi.error("Lỗi khi lưu sản phẩm!");
+          // [SỬA ĐOẠN NÀY] Bắt lỗi trùng tên từ Backend
+          const errorMessage = 
+            error.response?.data?.message || 
+            error.response?.data || 
+            "Lỗi khi lưu sản phẩm!";
+
+          // Kiểm tra nếu thông báo lỗi có chứa từ khóa "duplicate"
+          if (errorMessage.toString().toLowerCase().includes("duplicate")) {
+            messageApi.error(`Tên sản phẩm "${values.tenSP}" đã tồn tại! Vui lòng đặt tên khác.`);
+          } else {
+            // Hiển thị các lỗi khác (như lỗi file quá lớn, lỗi mạng...)
+            messageApi.error(errorMessage);
+          }
         }
       })
       .catch(() => {});
@@ -472,7 +506,7 @@ const ProductPage = () => {
               icon={<PlusOutlined />}
               onClick={handleOpenModal}
             >
-              Thêm SP
+              Thêm Sản Phẩm
             </Button>
           )}
         </Space>
@@ -530,16 +564,16 @@ const ProductPage = () => {
               <Form.Item
                 name="tenSP"
                 label="Tên Sản Phẩm"
-                rules={[{ required: true, message: "Vui lòng nhập tên!" }]}
+                rules={[{ required: true, message: "Nhập tên sản phẩm" }]}
               >
-                <Input />
+                <Input placeholder="Nhập tên sản phẩm"/>
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
               <Form.Item
                 name="maLoai"
                 label="Loại Hàng"
-                rules={[{ required: true, message: "Chọn loại hàng!" }]}
+                rules={[{ required: true, message: "Chọn loại hàng" }]}
               >
                 <Select placeholder="Chọn loại hàng">
                   {listLoaiHang.map((l) => (
@@ -561,16 +595,16 @@ const ProductPage = () => {
               <Form.Item
                 name="donViTinh"
                 label="Đơn vị tính"
-                rules={[{ required: true, message: "Nhập ĐVT!" }]}
+                rules={[{ required: true, message: "Nhập đơn vị tính" }]}
               >
-                <Input placeholder="Ví dụ: Cái, Hộp, Kg..." />
+                <Input placeholder="Nhập đơn vị tính" />
               </Form.Item>
             </Col>
             <Col xs={24} md={12}>
               <Form.Item
                 name="giaNhap"
                 label="Giá nhập ban đầu"
-                rules={[{ required: true, message: "Nhập giá!" }]}
+                rules={[{ required: true, message: "Nhập giá" }]}
               >
                 <InputNumber
                   style={{ width: "100%" }}
@@ -580,22 +614,25 @@ const ProductPage = () => {
                   }
                   parser={(v) => v.replace(/\$\s?|(,*)/g, "")}
                   addonAfter="VNĐ"
+                  placeholder="Nhập giá"
                 />
               </Form.Item>
             </Col>
           </Row>
 
-          {/* Hàng 3 */}
           <Row gutter={16}>
             <Col xs={24} md={12}>
               <Form.Item
                 name="mucTonToiThieu"
                 label="Mức tồn tối thiểu"
-                rules={[{ required: true }]}
+                rules={[{ required: true,message: "Nhập mức tồn tối thiểu"}]}
               >
                 <InputNumber
                   style={{ width: "100%" }}
                   min={0}
+                  precision={0} // [QUAN TRỌNG] Chỉ cho nhập số nguyên, không hiện số thập phân
+                  step={1}      // [TÙY CHỌN] Khi bấm nút tăng giảm sẽ nhảy 1 đơn vị
+                  placeholder="Nhập mức tồn tối thiểu"
                 />
               </Form.Item>
             </Col>
@@ -603,11 +640,14 @@ const ProductPage = () => {
               <Form.Item
                 name="mucTonToiDa"
                 label="Mức tồn tối đa"
-                rules={[{ required: true }]}
+                rules={[{ required: true,message: "Nhập mức tồn tối thiểu"}]}
               >
                 <InputNumber
                   style={{ width: "100%" }}
                   min={0}
+                  precision={0} // [QUAN TRỌNG] Chỉ cho nhập số nguyên
+                  step={1}
+                  placeholder="Nhập mức tồn tối đa"
                 />
               </Form.Item>
             </Col>

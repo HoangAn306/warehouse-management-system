@@ -146,15 +146,21 @@ const CategoryPage = () => {
           setIsModalVisible(false);
           fetchCategories();
         } catch (error) {
-          // [SỬA ĐOẠN NÀY] Kiểm tra lỗi Duplicate từ Backend
-          const errorMessage = error.response?.data?.message || error.response?.data || "";
-          
-          // Nếu thông báo lỗi có chứa chữ "duplicate" (không phân biệt hoa thường)
+          // 1. Lấy message từ backend (ưu tiên .message, nếu không có thì lấy toàn bộ data)
+          const errorMessage =
+            error.response?.data?.message ||
+            error.response?.data ||
+            "Lỗi lưu dữ liệu!";
+
+          // 2. Chuyển về chữ thường để kiểm tra từ khóa "duplicate"
           if (errorMessage.toString().toLowerCase().includes("duplicate")) {
-            messageApi.error("Loại hàng đã tồn tại");
+            // Nếu phát hiện trùng -> Thông báo tiếng Việt dễ hiểu
+            messageApi.error(
+              `Tên loại hàng "${values.tenLoai}" đã tồn tại! Vui lòng chọn tên khác.`
+            );
           } else {
-            // Các lỗi khác thì hiển thị chung
-            messageApi.error("Lỗi lưu dữ liệu!");
+            // [SỬA ĐOẠN NÀY] Nếu lỗi khác -> Hiển thị nguyên văn message từ Backend
+            messageApi.error(errorMessage);
           }
         }
       })

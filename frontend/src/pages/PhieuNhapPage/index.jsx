@@ -779,7 +779,7 @@ const PhieuNhapPage = () => {
             <Form.Item
               name="maNCC"
               label="Nhà Cung Cấp"
-              rules={[{ required: true, message: "Vui lòng chọn NCC trước" }]}
+              rules={[{ required: true, message: "Chọn nhà cung cấp" }]}
             >
               <Select
                 style={{ width: 250 }}
@@ -787,6 +787,7 @@ const PhieuNhapPage = () => {
                 optionFilterProp="children"
                 onChange={handleNCCChange}
                 disabled={!!editingRecord}
+                placeholder="Chọn nhà cung cấp"
               >
                 {listNhaCungCap.map((n) => (
                   <Option
@@ -801,12 +802,13 @@ const PhieuNhapPage = () => {
             <Form.Item
               name="maKho"
               label="Kho Nhập"
-              rules={[{ required: true }]}
+              rules={[{ required: true , message: "Chọn kho nhập" }]}
             >
               <Select
                 style={{ width: 200 }}
                 showSearch
                 optionFilterProp="children"
+                placeholder="Chọn kho nhập"
               >
                 {listKho.map((k) => (
                   <Option
@@ -821,9 +823,9 @@ const PhieuNhapPage = () => {
             <Form.Item
               name="chungTu"
               label="Chứng từ"
-              rules={[{ required: true }]}
+              rules={[{ required: true, message: "Nhập chứng từ"  }]}
             >
-              <Input placeholder="PN-001" />
+              <Input placeholder="Nhập chứng từ" />
             </Form.Item>
           </Space>
 
@@ -872,7 +874,7 @@ const PhieuNhapPage = () => {
                         {...restField}
                         name={[name, "maSP"]}
                         label={!screens.md ? "Sản phẩm" : null} // Hiện label trên mobile
-                        rules={[{ required: true, message: "Chọn SP" }]}
+                        rules={[{ required: true, message: "Chọn sản phẩm" }]}
                         style={{ marginBottom: 0 }}
                       >
                         <Select
@@ -922,6 +924,7 @@ const PhieuNhapPage = () => {
                         name={[name, "ngayHetHan"]}
                         label={!screens.md ? "Hạn SD" : null}
                         style={{ marginBottom: 0 }}
+                        rules={[{ required: true, message: "Nhập ngày hết hạn" }]}
                       >
                         <DatePicker
                           format="DD/MM/YYYY"
@@ -941,7 +944,7 @@ const PhieuNhapPage = () => {
                         {...restField}
                         name={[name, "soLuong"]}
                         label={!screens.md ? "Số lượng" : null}
-                        rules={[{ required: true, message: "Nhập SL" }]}
+                        rules={[{ required: true, message: "Nhập số lượng" }]}
                         style={{ marginBottom: 0 }}
                       >
                         <InputNumber

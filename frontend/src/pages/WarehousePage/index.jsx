@@ -175,8 +175,23 @@ const WarehousePage = () => {
           setIsModalVisible(false);
           fetchWarehouses();
         } catch (error) {
-          messageApi.error("Có lỗi xảy ra!");
-        }
+                  // 1. Lấy message từ backend (ưu tiên .message, nếu không có thì lấy toàn bộ data)
+                  const errorMessage =
+                    error.response?.data?.message ||
+                    error.response?.data ||
+                    "Lỗi lưu dữ liệu!";
+        
+                  // 2. Chuyển về chữ thường để kiểm tra từ khóa "duplicate"
+                  if (errorMessage.toString().toLowerCase().includes("duplicate")) {
+                    // Nếu phát hiện trùng -> Thông báo tiếng Việt dễ hiểu
+                    messageApi.error(
+                      `Tên kho hàng "${values.tenKho}" đã tồn tại! Vui lòng chọn tên khác.`
+                    );
+                  } else {
+                    // [SỬA ĐOẠN NÀY] Nếu lỗi khác -> Hiển thị nguyên văn message từ Backend
+                    messageApi.error(errorMessage);
+                  }
+                }
       })
       .catch(() => {});
   };
@@ -455,14 +470,14 @@ const WarehousePage = () => {
           <Form.Item
             name="tenKho"
             label="Tên Kho"
-            rules={[{ required: true, message: "Vui lòng nhập tên kho!" }]}
+            rules={[{ required: true, message: "Nhập tên kho" }]}
           >
             <Input placeholder="Ví dụ: Kho Chính" />
           </Form.Item>
           <Form.Item
             name="diaChi"
             label="Địa Chỉ"
-            rules={[{ required: true }]}
+            rules={[{ required: true, message: "Nhập địa chỉ"  }]}
           >
             <Input placeholder="Ví dụ: 123 Đường ABC..." />
           </Form.Item>
