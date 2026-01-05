@@ -1,15 +1,20 @@
 package stu.kho.backend.service;
 
+import java.util.List;
+
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile; // <-- Import quan trọng
+import org.springframework.transaction.annotation.Transactional; // <-- Import quan trọng
+import org.springframework.web.multipart.MultipartFile;
+
 import stu.kho.backend.dto.SanPhamFilterRequest;
 import stu.kho.backend.dto.SanPhamRequest;
 import stu.kho.backend.entity.HoatDong;
 import stu.kho.backend.entity.SanPham;
-import stu.kho.backend.repository.*;
-
-import java.util.List;
+import stu.kho.backend.repository.HoatDongRepository;
+import stu.kho.backend.repository.LoaiHangRepository;
+import stu.kho.backend.repository.NccSanPhamRepository;
+import stu.kho.backend.repository.NguoiDungRepository;
+import stu.kho.backend.repository.SanPhamRepository;
 
 @Service
 public class SanPhamService {
@@ -171,40 +176,22 @@ public class SanPhamService {
     }
 
     private void validateProductUniqueness(SanPhamRequest request) {
-        // BƯỚC 1: Tìm tất cả sản phẩm đang hoạt động (Chưa xóa) có cùng tên
-        // Yêu cầu: Repository phải query "WHERE TenSP = ? AND DaXoa = 0"
-        List<SanPham> existingProducts = sanPhamRepository.findByTenSP(request.getTenSP());
+        // BƯỚC 1: Lấy tên sản phẩm từ request và cắt khoảng trắng thừa (để tránh lỗi " ABC" khác "ABC")
+        String tenSpCheck = request.getTenSP().trim();
 
-        // Nếu không có sản phẩm nào trùng tên -> Hợp lệ, kết thúc kiểm tra
-        if (existingProducts.isEmpty()) {
-            return;
+        // BƯỚC 2: Tìm tất cả sản phẩm đang hoạt động (Chưa xóa) có cùng tên
+        // Hàm này trả về list các sản phẩm có tên trùng khớp
+        List<SanPham> existingProducts = sanPhamRepository.findByTenSP(tenSpCheck);
+
+        // BƯỚC 3: Kiểm tra đơn giản
+        // Nếu danh sách KHÔNG rỗng => Nghĩa là đã có ít nhất 1 sản phẩm trùng tên
+        if (!existingProducts.isEmpty()) {
+            throw new RuntimeException(
+                "Lỗi trùng lặp: Tên sản phẩm '" + tenSpCheck + "' đã tồn tại trong hệ thống. Vui lòng chọn tên khác!"
+            );
         }
-
-        // Nếu request không có danh sách NCC (null hoặc rỗng) -> Hợp lệ (vì không thể trùng cặp SP-NCC)
-        if (request.getDanhSachMaNCC() == null || request.getDanhSachMaNCC().isEmpty()) {
-            return;
-        }
-
-        // BƯỚC 2: Duyệt qua từng sản phẩm cũ để kiểm tra danh sách NCC
-        List<Integer> newNccIds = request.getDanhSachMaNCC(); // List NCC người dùng đang chọn
-
-        for (SanPham oldProduct : existingProducts) {
-            // Lấy danh sách ID Nhà cung cấp của sản phẩm cũ này
-            List<Integer> oldNccIds = nccSanPhamRepository.findMaNCCByMaSP(oldProduct.getMaSP());
-
-            // BƯỚC 3: So sánh giao thoa (Intersection)
-            // Nếu có bất kỳ NCC nào trong list MỚI nằm trong list CŨ -> BÁO LỖI
-            for (Integer newId : newNccIds) {
-                if (oldNccIds.contains(newId)) {
-                    throw new RuntimeException(
-                            "Lỗi trùng lặp: Sản phẩm '" + request.getTenSP() +
-                                    "' hiện đang kinh doanh (chưa xóa) đã tồn tại với Nhà cung cấp ID " + newId +
-                                    ". Vui lòng kiểm tra lại hoặc cập nhật số lượng cho sản phẩm cũ."
-                    );
-                }
-            }
-        }
-        // Nếu chạy hết vòng lặp mà không ném lỗi -> Hợp lệ
+        
+        // Nếu code chạy đến đây nghĩa là không trùng, cho phép đi tiếp...
     }
     public List<SanPham> getTrash() {
         return sanPhamRepository.findAllDeleted();
