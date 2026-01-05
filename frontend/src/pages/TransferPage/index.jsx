@@ -98,6 +98,7 @@ const TransferPage = () => {
   const [isAdmin, setIsAdmin] = useState(false);
 
   // --- 1. HÀM TẢI DỮ LIỆU ---
+ // --- HÀM TẢI DỮ LIỆU (ĐÃ FIX LỖI PHÂN TRANG & LỌC CHO ĐIỀU CHUYỂN) ---
   const fetchData = useCallback(
     async (page = 1, pageSize = 5, currentFilter = {}) => {
       setLoading(true);
@@ -105,60 +106,91 @@ const TransferPage = () => {
         const { chungTu, trangThai, maKhoXuat, maKhoNhap, dateRange } =
           currentFilter;
 
-        const filterPayload = {
-          page: page - 1,
-          size: pageSize,
-          chungTu: chungTu || null,
-          trangThai: trangThai || null,
-          maKhoXuat: maKhoXuat || null,
-          maKhoNhap: maKhoNhap || null,
-          fromDate: dateRange ? dateRange[0].format("YYYY-MM-DD") : null,
-          toDate: dateRange ? dateRange[1].format("YYYY-MM-DD") : null,
-        };
+        // 1. Xác định chính xác "Đang lọc"
+        // Kiểm tra từng trường cụ thể, KHÔNG so sánh với page/pageSize
+        const isFiltering =
+          (chungTu && chungTu.trim() !== "") ||
+          (trangThai !== null && trangThai !== undefined) ||
+          !!maKhoXuat ||
+          !!maKhoNhap ||
+          !!dateRange;
 
-        const hasFilter = Object.values(filterPayload).some(
-          (val) =>
-            val !== null &&
-            val !== "" &&
-            val !== undefined &&
-            val !== page - 1 &&
-            val !== pageSize
-        );
+        if (isFiltering) {
+          // === TRƯỜNG HỢP 1: LỌC ===
+          const filterPayload = {
+            page: page - 1,
+            size: pageSize,
+            chungTu: chungTu || null,
+            // Xử lý trangThai để tránh lỗi undefined
+            trangThai: (trangThai !== null && trangThai !== undefined) ? trangThai : null,
+            maKhoXuat: maKhoXuat || null,
+            maKhoNhap: maKhoNhap || null,
+            fromDate: dateRange ? dateRange[0].format("YYYY-MM-DD") : null,
+            toDate: dateRange ? dateRange[1].format("YYYY-MM-DD") : null,
+          };
 
-        let response;
-        if (hasFilter && transferService.filterTransfers) {
-          response = await transferService.filterTransfers(filterPayload);
+          // Gọi API Lọc
+          const response = await transferService.filterTransfers(filterPayload);
+
+          if (response.data) {
+            // A. Nếu API trả về dạng phân trang chuẩn { content: [], totalElements: ... }
+            if (Array.isArray(response.data.content)) {
+              setListData(response.data.content);
+              setPagination((prev) => ({
+                ...prev,
+                current: page,        // [QUAN TRỌNG] Cập nhật trang hiện tại
+                pageSize: pageSize,
+                total: response.data.totalElements,
+              }));
+            }
+            // B. Nếu API trả về mảng thường (chưa phân trang ở server) -> Cắt trang ở Client
+            else if (Array.isArray(response.data)) {
+              const allFiltered = response.data;
+              // Sort giảm dần theo ngày (nếu cần)
+              allFiltered.sort((a, b) => new Date(b.ngayChuyen) - new Date(a.ngayChuyen));
+
+              const startIndex = (page - 1) * pageSize;
+              const endIndex = startIndex + pageSize;
+
+              setListData(allFiltered.slice(startIndex, endIndex));
+              setPagination((prev) => ({
+                ...prev,
+                current: page,        // [QUAN TRỌNG]
+                pageSize: pageSize,
+                total: allFiltered.length
+              }));
+            } else {
+              setListData([]);
+              setPagination((prev) => ({ ...prev, total: 0 }));
+            }
+          }
         } else {
-          response = await transferService.getAllTransfers();
-        }
+          // === TRƯỜNG HỢP 2: LẤY TẤT CẢ (Client-side Pagination) ===
+          const response = await transferService.getAllTransfers();
+          const allData = response.data || [];
 
-        const data = response.data;
-        if (data && Array.isArray(data.content)) {
-          setListData(data.content);
-          setPagination((prev) => ({
-            ...prev,
-            current: page,
-            pageSize: pageSize,
-            total: data.totalElements,
-          }));
-        } else if (Array.isArray(data)) {
-          // Sort giảm dần theo ngày
-          data.sort((a, b) => new Date(b.ngayChuyen) - new Date(a.ngayChuyen));
+          if (Array.isArray(allData)) {
+            // Sort giảm dần theo ngày
+            allData.sort((a, b) => new Date(b.ngayChuyen) - new Date(a.ngayChuyen));
 
-          const startIndex = (page - 1) * pageSize;
-          const endIndex = startIndex + pageSize;
-          setListData(data.slice(startIndex, endIndex));
-          setPagination((prev) => ({
-            ...prev,
-            current: page,
-            pageSize: pageSize,
-            total: data.length,
-          }));
-        } else {
-          setListData([]);
+            const startIndex = (page - 1) * pageSize;
+            const endIndex = startIndex + pageSize;
+            
+            setListData(allData.slice(startIndex, endIndex));
+            setPagination((prev) => ({
+              ...prev,
+              current: page,
+              pageSize: pageSize,
+              total: allData.length,
+            }));
+          } else {
+            setListData([]);
+          }
         }
       } catch (error) {
+        console.error(error);
         messageApi.error("Không thể tải danh sách phiếu điều chuyển!");
+        setListData([]);
       }
       setLoading(false);
     },
@@ -998,17 +1030,23 @@ const TransferPage = () => {
               <Descriptions.Item label="Người Lập">
                 {getUserName(viewingRecord.nguoiLap)}
               </Descriptions.Item>
-              <Descriptions.Item
-                label="Ghi Chú"
-                span={2}
-              >
-                {viewingRecord.ghiChu}
+              <Descriptions.Item label="Người Duyệt">
+                {viewingRecord.nguoiDuyet
+                  ? getUserName(viewingRecord.nguoiDuyet)
+                  : "---"}
               </Descriptions.Item>
+              
               <Descriptions.Item
                 label="Chứng Từ"
                 span={2}
               >
                 {viewingRecord.chungTu}
+              </Descriptions.Item>
+              <Descriptions.Item
+                label="Ghi Chú"
+                span={2}
+              >
+                {viewingRecord.ghiChu}
               </Descriptions.Item>
             </Descriptions>
             <Divider

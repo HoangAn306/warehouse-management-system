@@ -146,7 +146,16 @@ const CategoryPage = () => {
           setIsModalVisible(false);
           fetchCategories();
         } catch (error) {
-          messageApi.error("Lỗi lưu dữ liệu!");
+          // [SỬA ĐOẠN NÀY] Kiểm tra lỗi Duplicate từ Backend
+          const errorMessage = error.response?.data?.message || error.response?.data || "";
+          
+          // Nếu thông báo lỗi có chứa chữ "duplicate" (không phân biệt hoa thường)
+          if (errorMessage.toString().toLowerCase().includes("duplicate")) {
+            messageApi.error("Loại hàng đã tồn tại");
+          } else {
+            // Các lỗi khác thì hiển thị chung
+            messageApi.error("Lỗi lưu dữ liệu!");
+          }
         }
       })
       .catch(() => {});

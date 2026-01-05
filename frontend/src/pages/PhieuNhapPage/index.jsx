@@ -101,66 +101,92 @@ const PhieuNhapPage = () => {
   const [isAdmin, setIsAdmin] = useState(false);
 
   // --- 1. HÀM TẢI DỮ LIỆU ---
+  // --- HÀM TẢI DỮ LIỆU (FIX LỖI KHÔNG CHUYỂN TRANG KHI LỌC) ---
   const fetchData = useCallback(
     async (page = 1, pageSize = 5, currentFilter = {}) => {
       setLoading(true);
       try {
         const { chungTu, trangThai, maKho, maNCC, dateRange } = currentFilter;
 
-        const filterPayload = {
-          page: page - 1,
-          size: pageSize,
-          chungTu: chungTu || null,
-          trangThai: trangThai || null,
-          maKho: maKho || null,
-          maNCC: maNCC || null,
-          fromDate: dateRange ? dateRange[0].format("YYYY-MM-DD") : null,
-          toDate: dateRange ? dateRange[1].format("YYYY-MM-DD") : null,
-        };
+        // 1. Xác định "Đang lọc"
+        const isFiltering =
+          (chungTu && chungTu.trim() !== "") ||
+          (trangThai !== null && trangThai !== undefined) ||
+          !!maKho ||
+          !!maNCC ||
+          !!dateRange;
 
-        const hasFilter = Object.values(filterPayload).some(
-          (val) =>
-            val !== null &&
-            val !== "" &&
-            val !== undefined &&
-            val !== page - 1 &&
-            val !== pageSize
-        );
+        if (isFiltering) {
+          // === TRƯỜNG HỢP 1: LỌC ===
+          const filterPayload = {
+            page: page - 1,
+            size: pageSize,
+            chungTu: chungTu || null,
+            trangThai: (trangThai !== null && trangThai !== undefined) ? trangThai : null,
+            maKho: maKho || null,
+            maNCC: maNCC || null,
+            fromDate: dateRange ? dateRange[0].format("YYYY-MM-DD") : null,
+            toDate: dateRange ? dateRange[1].format("YYYY-MM-DD") : null,
+          };
 
-        let response;
-        if (hasFilter && phieuNhapService.filterPhieuNhap) {
-          response = await phieuNhapService.filterPhieuNhap(filterPayload);
+          const response = await phieuNhapService.filterPhieuNhap(filterPayload);
+          
+          if (response.data) {
+            // A. Nếu API hỗ trợ phân trang (trả về { content: [], totalElements: ... })
+            if (Array.isArray(response.data.content)) {
+              setListData(response.data.content);
+              setPagination((prev) => ({
+                ...prev,
+                current: page,        // [QUAN TRỌNG] Cập nhật trang hiện tại
+                pageSize: pageSize,
+                total: response.data.totalElements,
+              }));
+            } 
+            // B. Nếu API trả về mảng tất cả kết quả (chưa phân trang ở server)
+            else if (Array.isArray(response.data)) {
+              const allFiltered = response.data;
+              // Tự cắt trang ở Client để hiển thị đúng trang 2, 3...
+              const startIndex = (page - 1) * pageSize;
+              const endIndex = startIndex + pageSize;
+              
+              setListData(allFiltered.slice(startIndex, endIndex));
+              setPagination((prev) => ({ 
+                ...prev, 
+                current: page,        // [QUAN TRỌNG] Cập nhật trang hiện tại
+                pageSize: pageSize,
+                total: allFiltered.length 
+              }));
+            } else {
+              setListData([]);
+              setPagination((prev) => ({ ...prev, total: 0 }));
+            }
+          }
         } else {
-          response = await phieuNhapService.getAllPhieuNhap();
-        }
+          // === TRƯỜNG HỢP 2: KHÔNG LỌC (Lấy tất cả) ===
+          const response = await phieuNhapService.getAllPhieuNhap();
+          const allData = response.data || [];
 
-        const data = response.data;
-        if (data && Array.isArray(data.content)) {
-          setListData(data.content);
-          setPagination((prev) => ({
-            ...prev,
-            current: page,
-            pageSize: pageSize,
-            total: data.totalElements,
-          }));
-        } else if (Array.isArray(data)) {
-          data.sort(
-            (a, b) => new Date(b.ngayLapPhieu) - new Date(a.ngayLapPhieu)
-          );
-          const startIndex = (page - 1) * pageSize;
-          const endIndex = startIndex + pageSize;
-          setListData(data.slice(startIndex, endIndex));
-          setPagination((prev) => ({
-            ...prev,
-            current: page,
-            pageSize: pageSize,
-            total: data.length,
-          }));
-        } else {
-          setListData([]);
+          if (Array.isArray(allData)) {
+            allData.sort((a, b) => new Date(b.ngayLapPhieu) - new Date(a.ngayLapPhieu));
+            
+            const startIndex = (page - 1) * pageSize;
+            const endIndex = startIndex + pageSize;
+            
+            setListData(allData.slice(startIndex, endIndex));
+            setPagination((prev) => ({
+              ...prev,
+              current: page,
+              pageSize: pageSize,
+              total: allData.length,
+            }));
+          } else {
+            setListData([]);
+          }
         }
       } catch (error) {
-        messageApi.error("Không thể tải danh sách phiếu nhập!");
+        console.error(error);
+        messageApi.error("Không thể tải danh sách!");
+        setListData([]);
       }
       setLoading(false);
     },
@@ -451,10 +477,11 @@ const PhieuNhapPage = () => {
       render: (id) => listNhaCungCap.find((n) => n.maNCC === id)?.tenNCC || id,
     },
     {
-      title: "Người Lập",
-      dataIndex: "nguoiLap",
+      title: "Kho Nhập",
+      dataIndex: "maKho",
       width: 150,
-      render: (id) => getUserName(id),
+      render: (maKho) =>
+        listKho.find((k) => k.maKho === maKho)?.tenKho || `Mã: ${maKho}`,
     },
     {
       title: "Hành động",
@@ -641,7 +668,7 @@ const PhieuNhapPage = () => {
               style={{ width: "100%" }}
               allowClear
               showSearch
-              placeholder="Chọn NCC"
+              placeholder="Chọn nhà cung cấp"
               optionFilterProp="children"
               value={filter.maNCC}
               onChange={(v) => setFilter({ ...filter, maNCC: v })}
@@ -662,11 +689,12 @@ const PhieuNhapPage = () => {
             xs={24}
             md={6}
           >
-            <div style={{ fontWeight: 500 }}>Ngày lập</div>
+            <div style={{ fontWeight: 500 }}>Ngày lập Phiếu</div>
             <RangePicker
               style={{ width: "100%" }}
               format="DD/MM/YYYY"
               value={filter.dateRange}
+              placeholder={["Từ ngày", "Đến ngày"]}
               onChange={(d) => setFilter({ ...filter, dateRange: d })}
             />
           </Col>
@@ -814,7 +842,7 @@ const PhieuNhapPage = () => {
             >
               <Col span={6}>Sản phẩm</Col>
               <Col span={4}>Số lô</Col>
-              <Col span={4}>Hạn SD</Col>
+              <Col span={4}>Ngày hết hạn</Col>
               <Col span={3}>Số lượng</Col>
               <Col span={5}>Đơn giá</Col>
               <Col span={2}>Xóa</Col>
@@ -1030,17 +1058,28 @@ const PhieuNhapPage = () => {
               <Descriptions.Item label="Tổng Tiền">
                 {Number(viewingPhieuNhap.tongTien).toLocaleString()} đ
               </Descriptions.Item>
-              <Descriptions.Item label="NCC">
+              <Descriptions.Item label="Nhà Cung Cấp">
                 {
                   listNhaCungCap.find((n) => n.maNCC === viewingPhieuNhap.maNCC)
                     ?.tenNCC
                 }
               </Descriptions.Item>
-              <Descriptions.Item label="Kho">
+              <Descriptions.Item label="Kho Nhập">
                 {
                   listKho.find((k) => k.maKho === viewingPhieuNhap.maKho)
                     ?.tenKho
                 }
+              </Descriptions.Item>
+              <Descriptions.Item label="Người Lập">
+                {getUserName(viewingPhieuNhap.nguoiLap)}
+              </Descriptions.Item>
+              <Descriptions.Item label="Người Duyệt">
+                {viewingPhieuNhap.nguoiDuyet 
+                  ? getUserName(viewingPhieuNhap.nguoiDuyet) 
+                  : "---"}
+              </Descriptions.Item>
+              <Descriptions.Item label="Chứng từ">
+                {renderStatus(viewingPhieuNhap.chungTu)}
               </Descriptions.Item>
             </Descriptions>
             <Divider orientation="left">Chi tiết sản phẩm</Divider>

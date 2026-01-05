@@ -99,66 +99,94 @@ const PhieuXuatPage = () => {
   const [currentUser, setCurrentUser] = useState(null);
 
   // --- HÀM TẢI DỮ LIỆU ---
+  // --- HÀM TẢI DỮ LIỆU (ĐÃ FIX LỖI PHÂN TRANG & LỌC) ---
   const fetchData = useCallback(
     async (page = 1, pageSize = 5, currentFilter = {}) => {
       setLoading(true);
       try {
         const { chungTu, trangThai, maKho, maKH, dateRange } = currentFilter;
 
-        const filterPayload = {
-          page: page - 1,
-          size: pageSize,
-          chungTu: chungTu || null,
-          trangThai: trangThai || null,
-          maKho: maKho || null,
-          maKH: maKH || null,
-          fromDate: dateRange ? dateRange[0].format("YYYY-MM-DD") : null,
-          toDate: dateRange ? dateRange[1].format("YYYY-MM-DD") : null,
-        };
+        // 1. Xác định chính xác "Đang lọc"
+        // Chỉ cần 1 trong các trường có dữ liệu thì coi là đang lọc
+        const isFiltering =
+          (chungTu && chungTu.trim() !== "") ||
+          (trangThai !== null && trangThai !== undefined) ||
+          !!maKho ||
+          !!maKH ||
+          !!dateRange;
 
-        const hasFilter = Object.values(filterPayload).some(
-          (val) =>
-            val !== null &&
-            val !== "" &&
-            val !== undefined &&
-            val !== page - 1 &&
-            val !== pageSize
-        );
+        if (isFiltering) {
+          // === TRƯỜNG HỢP 1: LỌC (Server-side Pagination) ===
+          const filterPayload = {
+            page: page - 1,
+            size: pageSize,
+            chungTu: chungTu || null,
+            // Xử lý trangThai để tránh lỗi undefined khi gửi lên server
+            trangThai: (trangThai !== null && trangThai !== undefined) ? trangThai : null,
+            maKho: maKho || null,
+            maKH: maKH || null,
+            fromDate: dateRange ? dateRange[0].format("YYYY-MM-DD") : null,
+            toDate: dateRange ? dateRange[1].format("YYYY-MM-DD") : null,
+          };
 
-        let response;
-        if (hasFilter && phieuXuatService.filterPhieuXuat) {
-          response = await phieuXuatService.filterPhieuXuat(filterPayload);
+          const response = await phieuXuatService.filterPhieuXuat(filterPayload);
+          
+          if (response.data) {
+            // A. Nếu API trả về dạng phân trang chuẩn { content: [], totalElements: ... }
+            if (Array.isArray(response.data.content)) {
+              setListData(response.data.content);
+              setPagination((prev) => ({
+                ...prev,
+                current: page,        // [QUAN TRỌNG] Cập nhật trang hiện tại
+                pageSize: pageSize,
+                total: response.data.totalElements,
+              }));
+            } 
+            // B. Nếu API trả về mảng thường (chưa phân trang ở server) -> Cắt trang ở Client
+            else if (Array.isArray(response.data)) {
+              const allFiltered = response.data;
+              const startIndex = (page - 1) * pageSize;
+              const endIndex = startIndex + pageSize;
+              
+              setListData(allFiltered.slice(startIndex, endIndex));
+              setPagination((prev) => ({ 
+                ...prev, 
+                current: page,        // [QUAN TRỌNG]
+                pageSize: pageSize,
+                total: allFiltered.length 
+              }));
+            } else {
+              setListData([]);
+              setPagination((prev) => ({ ...prev, total: 0 }));
+            }
+          }
         } else {
-          response = await phieuXuatService.getAllPhieuXuat();
-        }
+          // === TRƯỜNG HỢP 2: LẤY TẤT CẢ (Client-side Pagination) ===
+          const response = await phieuXuatService.getAllPhieuXuat();
+          const allData = response.data || [];
 
-        const data = response.data;
-        if (data && Array.isArray(data.content)) {
-          setListData(data.content);
-          setPagination((prev) => ({
-            ...prev,
-            current: page,
-            pageSize: pageSize,
-            total: data.totalElements,
-          }));
-        } else if (Array.isArray(data)) {
-          data.sort(
-            (a, b) => new Date(b.ngayLapPhieu) - new Date(a.ngayLapPhieu)
-          );
-          const startIndex = (page - 1) * pageSize;
-          const endIndex = startIndex + pageSize;
-          setListData(data.slice(startIndex, endIndex));
-          setPagination((prev) => ({
-            ...prev,
-            current: page,
-            pageSize: pageSize,
-            total: data.length,
-          }));
-        } else {
-          setListData([]);
+          if (Array.isArray(allData)) {
+            // Sắp xếp mới nhất lên đầu
+            allData.sort((a, b) => new Date(b.ngayLapPhieu) - new Date(a.ngayLapPhieu));
+            
+            const startIndex = (page - 1) * pageSize;
+            const endIndex = startIndex + pageSize;
+            
+            setListData(allData.slice(startIndex, endIndex));
+            setPagination((prev) => ({
+              ...prev,
+              current: page,
+              pageSize: pageSize,
+              total: allData.length,
+            }));
+          } else {
+            setListData([]);
+          }
         }
       } catch (error) {
+        console.error(error);
         messageApi.error("Không thể tải danh sách phiếu xuất!");
+        setListData([]);
       }
       setLoading(false);
     },
