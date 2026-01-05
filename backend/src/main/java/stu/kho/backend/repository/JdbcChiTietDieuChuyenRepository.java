@@ -1,21 +1,24 @@
 package stu.kho.backend.repository;
 
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.RowMapper;
-import org.springframework.stereotype.Repository;
-import stu.kho.backend.entity.ChiTietDieuChuyen;
-
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
+
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.stereotype.Repository;
+
+import stu.kho.backend.entity.ChiTietDieuChuyen;
 
 @Repository
 public class JdbcChiTietDieuChuyenRepository implements ChiTietDieuChuyenRepository {
 
     private final JdbcTemplate jdbcTemplate;
+    private final SanPhamRepository sanPhamRepository; // [1] Cần thêm cái này
 
-    public JdbcChiTietDieuChuyenRepository(JdbcTemplate jdbcTemplate) {
+  public JdbcChiTietDieuChuyenRepository(JdbcTemplate jdbcTemplate, SanPhamRepository sanPhamRepository) {
         this.jdbcTemplate = jdbcTemplate;
+        this.sanPhamRepository = sanPhamRepository; 
     }
 
     @Override
@@ -46,7 +49,7 @@ public class JdbcChiTietDieuChuyenRepository implements ChiTietDieuChuyenReposit
     }
 
     // [CẬP NHẬT] Mapper cũng cần lấy thêm cột SoLo và NgayHetHan ra
-    private static class ChiTietRowMapper implements RowMapper<ChiTietDieuChuyen> {
+    private class ChiTietRowMapper implements RowMapper<ChiTietDieuChuyen> {
         @Override
         public ChiTietDieuChuyen mapRow(ResultSet rs, int rowNum) throws SQLException {
             ChiTietDieuChuyen ct = new ChiTietDieuChuyen();
@@ -59,7 +62,7 @@ public class JdbcChiTietDieuChuyenRepository implements ChiTietDieuChuyenReposit
             if (rs.getDate("NgayHetHan") != null) {
                 ct.setNgayHetHan(rs.getDate("NgayHetHan").toLocalDate());
             }
-
+            ct.setSanPham(sanPhamRepository.findById(ct.getMaSP()).orElse(null));
             return ct;
         }
     }
