@@ -1,19 +1,5 @@
 package stu.kho.backend.service;
 
-import com.lowagie.text.*;
-import com.lowagie.text.pdf.BaseFont;
-import com.lowagie.text.pdf.PdfPCell;
-import com.lowagie.text.pdf.PdfPTable;
-import com.lowagie.text.pdf.PdfWriter;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import stu.kho.backend.dto.ChiTietPhieuNhapRequest;
-import stu.kho.backend.dto.PhieuNhapFilterRequest;
-import stu.kho.backend.dto.PhieuNhapRequest;
-import stu.kho.backend.entity.*;
-import stu.kho.backend.repository.*;
-
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -21,6 +7,44 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.lowagie.text.Document;
+import com.lowagie.text.DocumentException;
+import com.lowagie.text.Element;
+import com.lowagie.text.Font;
+import com.lowagie.text.PageSize;
+import com.lowagie.text.Paragraph;
+import com.lowagie.text.Phrase;
+import com.lowagie.text.Rectangle;
+import com.lowagie.text.pdf.BaseFont;
+import com.lowagie.text.pdf.PdfPCell;
+import com.lowagie.text.pdf.PdfPTable;
+import com.lowagie.text.pdf.PdfWriter;
+
+import stu.kho.backend.dto.ChiTietPhieuNhapRequest;
+import stu.kho.backend.dto.PhieuNhapFilterRequest;
+import stu.kho.backend.dto.PhieuNhapRequest;
+import stu.kho.backend.entity.ChiTietKho;
+import stu.kho.backend.entity.ChiTietPhieuNhap;
+import stu.kho.backend.entity.HoatDong;
+import stu.kho.backend.entity.KhoHang;
+import stu.kho.backend.entity.NguoiDung;
+import stu.kho.backend.entity.NhaCungCap;
+import stu.kho.backend.entity.PhieuNhapHang;
+import stu.kho.backend.entity.SanPham;
+import stu.kho.backend.repository.ChiTietKhoRepository;
+import stu.kho.backend.repository.ChiTietPhieuNhapRepository;
+import stu.kho.backend.repository.HoatDongRepository;
+import stu.kho.backend.repository.KhoHangRepository;
+import stu.kho.backend.repository.NccSanPhamRepository;
+import stu.kho.backend.repository.NguoiDungRepository;
+import stu.kho.backend.repository.NhaCungCapRepository;
+import stu.kho.backend.repository.PhieuNhapRepository;
+import stu.kho.backend.repository.SanPhamRepository;
 
 @Service
 public class PhieuNhapService {
@@ -366,7 +390,7 @@ public class PhieuNhapService {
         Font fontNormal = new Font(bf, 11, Font.NORMAL);
 
         // 3. Tiêu đề
-        Paragraph title = new Paragraph("PHIEU NHAP KHO (IMPORT NOTE)", fontTitle);
+        Paragraph title = new Paragraph("PHIẾU NHẬP KHO", fontTitle);
         title.setAlignment(Element.ALIGN_CENTER);
         document.add(title);
         document.add(new Paragraph(" ", fontNormal));
@@ -375,14 +399,14 @@ public class PhieuNhapService {
         PdfPTable infoTable = new PdfPTable(2);
         infoTable.setWidthPercentage(100);
 
-        addTextToTable(infoTable, "Ma Phieu: #" + pn.getMaPhieuNhap(), fontBold);
-        addTextToTable(infoTable, "Ngay Lap: " + pn.getNgayLapPhieu().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), fontNormal);
+        addTextToTable(infoTable, "Mã Phiếu: #" + pn.getMaPhieuNhap(), fontBold);
+        addTextToTable(infoTable, "Ngày Lập Phiếu: " + pn.getNgayLapPhieu().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), fontNormal);
 
-        addTextToTable(infoTable, "Nha Cung Cap: " + ncc.getTenNCC(), fontNormal);
+        addTextToTable(infoTable, "Nhà Cung Cấp: " + ncc.getTenNCC(), fontNormal);
         addTextToTable(infoTable, "SDT: " + (ncc.getSdt() != null ? ncc.getSdt() : ""), fontNormal);
 
-        addTextToTable(infoTable, "Nhap Tai Kho: " + kho.getTenKho(), fontNormal);
-        addTextToTable(infoTable, "Dia Chi: " + (kho.getDiaChi() != null ? kho.getDiaChi() : ""), fontNormal);
+        addTextToTable(infoTable, "Nhập vào Kho: " + kho.getTenKho(), fontNormal);
+        addTextToTable(infoTable, "Địa Chỉ: " + (kho.getDiaChi() != null ? kho.getDiaChi() : ""), fontNormal);
 
         document.add(infoTable);
         document.add(new Paragraph(" ", fontNormal));
@@ -394,27 +418,33 @@ public class PhieuNhapService {
         table.setWidths(new float[]{0.8f, 3.5f, 1.2f, 2.5f, 1.2f, 2f, 2.5f});
 
         addCellToTable(table, "STT", fontBold, true);
-        addCellToTable(table, "Ten Hang", fontBold, true);
-        addCellToTable(table, "DVT", fontBold, true);
-        addCellToTable(table, "Lo / Han SD", fontBold, true); // Quan trọng với phiếu nhập
-        addCellToTable(table, "SL", fontBold, true);
-        addCellToTable(table, "Don Gia", fontBold, true);
-        addCellToTable(table, "Thanh Tien", fontBold, true);
+        addCellToTable(table, "Tên Hàng", fontBold, true);
+        addCellToTable(table, "Đơn vị tính", fontBold, true);
+        addCellToTable(table, "Lô /HSD", fontBold, true); // Quan trọng với phiếu nhập
+        addCellToTable(table, "Số lượng", fontBold, true);
+        addCellToTable(table, "Đơn Giá", fontBold, true);
+        addCellToTable(table, "Thành Tiền", fontBold, true);
 
         int i = 1;
         DateTimeFormatter dateFmt = DateTimeFormatter.ofPattern("dd/MM/yy");
 
         for (ChiTietPhieuNhap ct : chiTietList) {
-            String tenSP = "SP #" + ct.getMaSP();
-            // Nếu bạn đã map object SanPham vào ChiTietPhieuNhap thì dùng: ct.getSanPham().getTenSP()
-
+            String tenSP;
+            String dvt;
+            if (ct.getSanPham() != null) {
+                tenSP = ct.getSanPham().getTenSP();
+                dvt = ct.getSanPham().getDonViTinh();
+            } else {
+                tenSP = "SP #" + ct.getMaSP(); // Fallback
+                dvt = "";
+            }
             String loHan = "";
-            if (ct.getSoLo() != null) loHan += "Lo: " + ct.getSoLo();
+            if (ct.getSoLo() != null) loHan += "Lô: " + ct.getSoLo();
             if (ct.getNgayHetHan() != null) loHan += "\nHSD: " + ct.getNgayHetHan().format(dateFmt);
 
             addCellToTable(table, String.valueOf(i++), fontNormal, false);
             addCellToTable(table, tenSP, fontNormal, false);
-            addCellToTable(table, "", fontNormal, false); // ĐVT (nếu có thì điền vào)
+            addCellToTable(table, dvt, fontNormal, false);
             addCellToTable(table, loHan, fontNormal, false);
             addCellToTable(table, String.valueOf(ct.getSoLuong()), fontNormal, false);
             addCellToTable(table, formatMoney(ct.getDonGia()), fontNormal, false);
@@ -423,7 +453,7 @@ public class PhieuNhapService {
         document.add(table);
 
         // 6. Tổng tiền
-        Paragraph totalPara = new Paragraph("Tong Cong: " + formatMoney(pn.getTongTien()), fontBold);
+        Paragraph totalPara = new Paragraph("Tổng Công: " + formatMoney(pn.getTongTien()), fontBold);
         totalPara.setAlignment(Element.ALIGN_RIGHT);
         totalPara.setSpacingBefore(10);
         document.add(totalPara);
@@ -433,13 +463,13 @@ public class PhieuNhapService {
         PdfPTable signTable = new PdfPTable(3);
         signTable.setWidthPercentage(100);
 
-        addCellSign(signTable, "Nguoi Lap Phieu", fontBold);
-        addCellSign(signTable, "Thu Kho", fontBold);
-        addCellSign(signTable, "Nha Cung Cap", fontBold);
+        addCellSign(signTable, "Người Lập Phiếu", fontBold);
+        addCellSign(signTable, "Người duyệt phiếu", fontBold);
+        addCellSign(signTable, "Nhà Cung Cấp", fontBold);
 
-        addCellSign(signTable, "(Ky, ho ten)", fontNormal);
-        addCellSign(signTable, "(Ky, ho ten)", fontNormal);
-        addCellSign(signTable, "(Ky, ho ten)", fontNormal);
+        addCellSign(signTable, "(Ký tên, Họ tên)", fontNormal);
+        addCellSign(signTable, "(Ký tên, Họ tên)", fontNormal);
+        addCellSign(signTable, "(Ký tên, Họ tên)", fontNormal);
 
         document.add(signTable);
         document.close();
