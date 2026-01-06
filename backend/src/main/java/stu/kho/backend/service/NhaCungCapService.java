@@ -85,6 +85,7 @@ public class NhaCungCapService {
     }
     @Transactional
     public NhaCungCap updateNhaCungCap(Integer id, NhaCungCapRequest request, String tenNguoiSua) {
+        validateSupplierUniqueness(request.getTenNCC(), id);
         NhaCungCap ncc = getNhaCungCapById(id);
 
         ncc.setTenNCC(request.getTenNCC());
