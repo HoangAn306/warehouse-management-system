@@ -98,7 +98,7 @@ const TransferPage = () => {
   const [isAdmin, setIsAdmin] = useState(false);
 
   // --- 1. HÀM TẢI DỮ LIỆU ---
- // --- HÀM TẢI DỮ LIỆU (ĐÃ FIX LỖI PHÂN TRANG & LỌC CHO ĐIỀU CHUYỂN) ---
+  // --- HÀM TẢI DỮ LIỆU (ĐÃ FIX LỖI PHÂN TRANG & LỌC CHO ĐIỀU CHUYỂN) ---
   const fetchData = useCallback(
     async (page = 1, pageSize = 5, currentFilter = {}) => {
       setLoading(true);
@@ -122,7 +122,8 @@ const TransferPage = () => {
             size: pageSize,
             chungTu: chungTu || null,
             // Xử lý trangThai để tránh lỗi undefined
-            trangThai: (trangThai !== null && trangThai !== undefined) ? trangThai : null,
+            trangThai:
+              trangThai !== null && trangThai !== undefined ? trangThai : null,
             maKhoXuat: maKhoXuat || null,
             maKhoNhap: maKhoNhap || null,
             fromDate: dateRange ? dateRange[0].format("YYYY-MM-DD") : null,
@@ -138,7 +139,7 @@ const TransferPage = () => {
               setListData(response.data.content);
               setPagination((prev) => ({
                 ...prev,
-                current: page,        // [QUAN TRỌNG] Cập nhật trang hiện tại
+                current: page, // [QUAN TRỌNG] Cập nhật trang hiện tại
                 pageSize: pageSize,
                 total: response.data.totalElements,
               }));
@@ -147,7 +148,9 @@ const TransferPage = () => {
             else if (Array.isArray(response.data)) {
               const allFiltered = response.data;
               // Sort giảm dần theo ngày (nếu cần)
-              allFiltered.sort((a, b) => new Date(b.ngayChuyen) - new Date(a.ngayChuyen));
+              allFiltered.sort(
+                (a, b) => new Date(b.ngayChuyen) - new Date(a.ngayChuyen)
+              );
 
               const startIndex = (page - 1) * pageSize;
               const endIndex = startIndex + pageSize;
@@ -155,9 +158,9 @@ const TransferPage = () => {
               setListData(allFiltered.slice(startIndex, endIndex));
               setPagination((prev) => ({
                 ...prev,
-                current: page,        // [QUAN TRỌNG]
+                current: page, // [QUAN TRỌNG]
                 pageSize: pageSize,
-                total: allFiltered.length
+                total: allFiltered.length,
               }));
             } else {
               setListData([]);
@@ -171,11 +174,13 @@ const TransferPage = () => {
 
           if (Array.isArray(allData)) {
             // Sort giảm dần theo ngày
-            allData.sort((a, b) => new Date(b.ngayChuyen) - new Date(a.ngayChuyen));
+            allData.sort(
+              (a, b) => new Date(b.ngayChuyen) - new Date(a.ngayChuyen)
+            );
 
             const startIndex = (page - 1) * pageSize;
             const endIndex = startIndex + pageSize;
-            
+
             setListData(allData.slice(startIndex, endIndex));
             setPagination((prev) => ({
               ...prev,
@@ -846,9 +851,13 @@ const TransferPage = () => {
 
           <Divider
             orientation="left"
-            style={{ borderColor: "#faad14", color: "#faad14" }}
+            style={{
+              borderColor: "#1677ff", // Màu xanh Ant Design chuẩn
+              color: "#003eb3", // Màu chữ xanh đậm hơn chút cho rõ nét
+              fontSize: "15px", // Tăng nhẹ cỡ chữ cho đẹp
+            }}
           >
-            DANH SÁCH HÀNG HÓA
+            DANH SÁCH SẢN PHẨM
           </Divider>
 
           {/* HEADER FORM LIST RESPONSIVE */}
@@ -870,8 +879,21 @@ const TransferPage = () => {
             </Row>
           )}
 
-          <Form.List name="chiTiet">
-            {(fields, { add, remove }) => (
+          <Form.List
+            name="chiTiet"
+            rules={[
+              {
+                validator: async (_, names) => {
+                  if (!names || names.length < 1) {
+                    return Promise.reject(
+                      new Error("Vui lòng thêm ít nhất một sản phẩm!")
+                    );
+                  }
+                },
+              },
+            ]}
+          >
+            {(fields, { add, remove }, { errors }) => (
               <>
                 {fields.map(({ key, name, ...restField }) => (
                   <Row
@@ -893,7 +915,7 @@ const TransferPage = () => {
                         {...restField}
                         name={[name, "maSP"]}
                         label={!screens.md ? "Sản phẩm" : null}
-                        rules={[{ required: true, message: "Chọn SP" }]}
+                        rules={[{ required: true, message: "Chọn sản phẩm" }]}
                         style={{ marginBottom: 0 }}
                       >
                         <Select
@@ -930,7 +952,7 @@ const TransferPage = () => {
                         label={!screens.md ? "Số lô" : null}
                         style={{ marginBottom: 0 }}
                       >
-                        <Input placeholder="Số lô (Trống)" />
+                        <Input placeholder="Số lô" />
                       </Form.Item>
                     </Col>
 
@@ -944,16 +966,18 @@ const TransferPage = () => {
                         name={[name, "soLuong"]}
                         label={!screens.md ? "Số lượng" : null}
                         rules={[
-                          { required: true, message: "Nhập SL" },
+                          { required: true, message: "Nhập số lượng" },
                           { type: "integer", min: 1, message: ">0" },
                         ]}
                         style={{ marginBottom: 0 }}
                       >
                         <InputNumber
-                          placeholder="SL"
-                          min={1}
-                          precision={0}
+                          min={1} // Bắt buộc >= 1 (Dương)
+                          precision={0} // [QUAN TRỌNG] Bắt buộc là số nguyên, không cho nhập 1.5
+                          step={1} // Nút tăng giảm nhảy 1 đơn vị
                           style={{ width: "100%" }}
+                          placeholder="Số lượng"
+                          parser={(v) => v.replace(/\D/g, "")} // Chỉ cho phép nhập số
                         />
                       </Form.Item>
                     </Col>
@@ -984,6 +1008,13 @@ const TransferPage = () => {
                   >
                     Thêm sản phẩm
                   </Button>
+                  {errors && errors.length > 0 && (
+                    <div style={{ color: "#ff4d4f", marginTop: "8px" }}>
+                      {errors.map((error, index) => (
+                        <div key={index}>{error}</div>
+                      ))}
+                    </div>
+                  )}
                 </Form.Item>
               </>
             )}
@@ -1035,7 +1066,7 @@ const TransferPage = () => {
                   ? getUserName(viewingRecord.nguoiDuyet)
                   : "---"}
               </Descriptions.Item>
-              
+
               <Descriptions.Item
                 label="Chứng Từ"
                 span={2}

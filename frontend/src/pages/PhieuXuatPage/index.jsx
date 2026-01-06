@@ -122,38 +122,41 @@ const PhieuXuatPage = () => {
             size: pageSize,
             chungTu: chungTu || null,
             // Xử lý trangThai để tránh lỗi undefined khi gửi lên server
-            trangThai: (trangThai !== null && trangThai !== undefined) ? trangThai : null,
+            trangThai:
+              trangThai !== null && trangThai !== undefined ? trangThai : null,
             maKho: maKho || null,
             maKH: maKH || null,
             fromDate: dateRange ? dateRange[0].format("YYYY-MM-DD") : null,
             toDate: dateRange ? dateRange[1].format("YYYY-MM-DD") : null,
           };
 
-          const response = await phieuXuatService.filterPhieuXuat(filterPayload);
-          
+          const response = await phieuXuatService.filterPhieuXuat(
+            filterPayload
+          );
+
           if (response.data) {
             // A. Nếu API trả về dạng phân trang chuẩn { content: [], totalElements: ... }
             if (Array.isArray(response.data.content)) {
               setListData(response.data.content);
               setPagination((prev) => ({
                 ...prev,
-                current: page,        // [QUAN TRỌNG] Cập nhật trang hiện tại
+                current: page, // [QUAN TRỌNG] Cập nhật trang hiện tại
                 pageSize: pageSize,
                 total: response.data.totalElements,
               }));
-            } 
+            }
             // B. Nếu API trả về mảng thường (chưa phân trang ở server) -> Cắt trang ở Client
             else if (Array.isArray(response.data)) {
               const allFiltered = response.data;
               const startIndex = (page - 1) * pageSize;
               const endIndex = startIndex + pageSize;
-              
+
               setListData(allFiltered.slice(startIndex, endIndex));
-              setPagination((prev) => ({ 
-                ...prev, 
-                current: page,        // [QUAN TRỌNG]
+              setPagination((prev) => ({
+                ...prev,
+                current: page, // [QUAN TRỌNG]
                 pageSize: pageSize,
-                total: allFiltered.length 
+                total: allFiltered.length,
               }));
             } else {
               setListData([]);
@@ -167,11 +170,13 @@ const PhieuXuatPage = () => {
 
           if (Array.isArray(allData)) {
             // Sắp xếp mới nhất lên đầu
-            allData.sort((a, b) => new Date(b.ngayLapPhieu) - new Date(a.ngayLapPhieu));
-            
+            allData.sort(
+              (a, b) => new Date(b.ngayLapPhieu) - new Date(a.ngayLapPhieu)
+            );
+
             const startIndex = (page - 1) * pageSize;
             const endIndex = startIndex + pageSize;
-            
+
             setListData(allData.slice(startIndex, endIndex));
             setPagination((prev) => ({
               ...prev,
@@ -774,7 +779,7 @@ const PhieuXuatPage = () => {
               <Form.Item
                 name="maKH"
                 label="Khách Hàng"
-                rules={[{ required: true, message: "Chọn KH" }]}
+                rules={[{ required: true, message: "Chọn khách hàng" }]}
               >
                 <Select
                   style={{ width: 200 }}
@@ -823,7 +828,16 @@ const PhieuXuatPage = () => {
               <Input placeholder="VD: PX-001" />
             </Form.Item>
           </Space>
-
+          <Divider
+            orientation="left"
+            style={{
+              borderColor: "#1677ff", // Màu xanh Ant Design chuẩn
+              color: "#003eb3", // Màu chữ xanh đậm hơn chút cho rõ nét
+              fontSize: "15px", // Tăng nhẹ cỡ chữ cho đẹp
+            }}
+          >
+            DANH SÁCH SẢN PHẨM
+          </Divider>
           {/* Header Form List Responsive */}
           {screens.md && (
             <Row
@@ -844,8 +858,21 @@ const PhieuXuatPage = () => {
             </Row>
           )}
 
-          <Form.List name="chiTiet">
-            {(fields, { add, remove }) => (
+          <Form.List
+            name="chiTiet"
+            rules={[
+              {
+                validator: async (_, names) => {
+                  if (!names || names.length < 1) {
+                    return Promise.reject(
+                      new Error("Vui lòng thêm ít nhất một sản phẩm!")
+                    );
+                  }
+                },
+              },
+            ]}
+          >
+            {(fields, { add, remove }, { errors }) => (
               <>
                 {fields.map(({ key, name, ...restField }) => (
                   <Row
@@ -873,7 +900,9 @@ const PhieuXuatPage = () => {
                         <Select
                           style={{ width: "100%" }}
                           placeholder={
-                            selectedKho ? "Chọn SP" : "Chọn Kho Xuất trước"
+                            selectedKho
+                              ? "Chọn sản phẩm"
+                              : "Chọn Kho Xuất trước"
                           }
                           showSearch
                           optionFilterProp="children"
@@ -917,7 +946,7 @@ const PhieuXuatPage = () => {
                         name={[name, "soLuong"]}
                         label={!screens.md ? "Số lượng" : null}
                         rules={[
-                          { required: true, message: "Nhập SL" },
+                          { required: true, message: "Nhập số lượng" },
                           ({ getFieldValue }) => ({
                             validator(_, value) {
                               if (!value) return Promise.resolve();
@@ -938,9 +967,12 @@ const PhieuXuatPage = () => {
                         style={{ marginBottom: 0 }}
                       >
                         <InputNumber
-                          placeholder="SL"
-                          min={1}
+                          min={1} // Bắt buộc >= 1 (Dương)
+                          precision={0} // [QUAN TRỌNG] Bắt buộc là số nguyên, không cho nhập 1.5
+                          step={1} // Nút tăng giảm nhảy 1 đơn vị
                           style={{ width: "100%" }}
+                          placeholder="Số lượng"
+                          parser={(v) => v.replace(/\D/g, "")} // Chỉ cho phép nhập số
                         />
                       </Form.Item>
                     </Col>
@@ -958,13 +990,33 @@ const PhieuXuatPage = () => {
                         style={{ marginBottom: 0 }}
                       >
                         <InputNumber
-                          placeholder="Giá"
                           min={0}
-                          formatter={(v) =>
-                            `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-                          }
-                          parser={(v) => v.replace(/\$\s?|(,*)/g, "")}
+                          step={0.01}
                           style={{ width: "100%" }}
+                          placeholder="Đơn giá"
+                          // [SỬA LỖI] Formatter: Chỉ thêm dấu phẩy cho phần nguyên
+                          formatter={(value) => {
+                            if (!value) return "";
+                            const strValue = `${value}`;
+                            // Tách phần nguyên và phần thập phân
+                            const [integer, decimal] = strValue.split(".");
+
+                            // Định dạng phần nguyên có dấu phẩy
+                            const formattedInteger = integer.replace(
+                              /\B(?=(\d{3})+(?!\d))/g,
+                              ","
+                            );
+
+                            // Nếu có phần thập phân thì ghép lại, không thì trả về phần nguyên
+                            return decimal !== undefined
+                              ? `${formattedInteger}.${decimal}`
+                              : formattedInteger;
+                          }}
+                          // [SỬA LỖI] Parser: Xóa dấu phẩy để tính toán
+                          parser={(value) => {
+                            // Chỉ xóa dấu phẩy, giữ lại dấu chấm
+                            return value ? value.replace(/,/g, "") : "";
+                          }}
                         />
                       </Form.Item>
                     </Col>
@@ -997,6 +1049,13 @@ const PhieuXuatPage = () => {
                   >
                     Thêm sản phẩm
                   </Button>
+                  {errors && errors.length > 0 && (
+                    <div style={{ color: "#ff4d4f", marginTop: "8px" }}>
+                      {errors.map((error, index) => (
+                        <div key={index}>{error}</div>
+                      ))}
+                    </div>
+                  )}
                 </Form.Item>
               </>
             )}

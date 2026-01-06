@@ -214,7 +214,11 @@ const SupplierPage = () => {
           setIsModalVisible(false);
           fetchSuppliers(keyword);
         } catch (error) {
-          messageApi.error("Có lỗi xảy ra!");
+          const errorMessage =
+            error.response?.data?.message ||
+            error.response?.data ||
+            "Lỗi xử lý!";
+          messageApi.error(errorMessage);
         }
       })
       .catch(() => {});
@@ -478,7 +482,7 @@ const SupplierPage = () => {
           <Form.Item
             name="tenNCC"
             label="Tên Nhà Cung Cấp"
-            rules={[{ required: true, message:"Nhập tên nhà cung cấp" }]}
+            rules={[{ required: true, message: "Nhập tên nhà cung cấp" }]}
           >
             <Input />
           </Form.Item>
@@ -491,7 +495,7 @@ const SupplierPage = () => {
           <Form.Item
             name="sdt"
             label="Số Điện Thoại"
-            rules={[{ required: true , message:"Nhập số điện thoại"}]}
+            rules={[{ required: true, message: "Nhập số điện thoại" }]}
           >
             <Input />
           </Form.Item>
