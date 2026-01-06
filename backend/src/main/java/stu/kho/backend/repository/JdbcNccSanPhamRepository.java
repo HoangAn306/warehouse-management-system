@@ -37,6 +37,7 @@ public class JdbcNccSanPhamRepository implements NccSanPhamRepository {
         Integer count = jdbcTemplate.queryForObject(sql, Integer.class, maNCC, maSP);
         return count != null && count > 0;
     }
+    @Override
     public List<Integer> findMaNCCByMaSP(Integer maSP) {
         String sql = "SELECT MaNCC FROM ncc_sanpham WHERE MaSP = ?";
         return jdbcTemplate.queryForList(sql, Integer.class, maSP);

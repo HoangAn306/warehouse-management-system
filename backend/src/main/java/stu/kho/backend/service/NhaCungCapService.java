@@ -1,8 +1,11 @@
 package stu.kho.backend.service;
 
+import java.util.List;
+
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
 import stu.kho.backend.dto.NhaCungCapRequest;
 import stu.kho.backend.entity.HoatDong;
 import stu.kho.backend.entity.NguoiDung;
@@ -10,8 +13,6 @@ import stu.kho.backend.entity.NhaCungCap;
 import stu.kho.backend.repository.HoatDongRepository;
 import stu.kho.backend.repository.NguoiDungRepository;
 import stu.kho.backend.repository.NhaCungCapRepository;
-
-import java.util.List;
 
 @Service
 public class NhaCungCapService {
@@ -39,6 +40,7 @@ public class NhaCungCapService {
 
     @Transactional
     public NhaCungCap createNhaCungCap(NhaCungCapRequest request, String tenNguoiTao) {
+        validateSupplierUniqueness(request.getTenNCC(), null);
         NhaCungCap ncc = new NhaCungCap();
         ncc.setTenNCC(request.getTenNCC());
         ncc.setNguoiLienHe(request.getNguoiLienHe());
@@ -58,7 +60,29 @@ public class NhaCungCapService {
 
         return ncc;
     }
+    private void validateSupplierUniqueness(String tenNCC, Integer currentId) {
+        String tenCheck = tenNCC.trim();
+        
+        // Gọi hàm Repository mới viết
+        List<NhaCungCap> existingList = nhaCungCapRepository.findByTenNCCIncludingDeleted(tenCheck);
 
+        for (NhaCungCap ncc : existingList) {
+            // Nếu đang update chính nó thì bỏ qua
+            if (currentId != null && ncc.getMaNCC().equals(currentId)) {
+                continue;
+            }
+
+            // Kiểm tra trạng thái để báo lỗi cụ thể
+            String trangThai = (ncc.getDaXoa() != null && ncc.getDaXoa()) 
+                               ? " (đang nằm trong Thùng Rác)" 
+                               : " (đang hoạt động)";
+
+            throw new RuntimeException(
+                "Lỗi trùng lặp: Tên nhà cung cấp '" + tenCheck + "' đã tồn tại" + trangThai + 
+                ". Vui lòng kiểm tra lại hoặc chọn tên khác!"
+            );
+        }
+    }
     @Transactional
     public NhaCungCap updateNhaCungCap(Integer id, NhaCungCapRequest request, String tenNguoiSua) {
         NhaCungCap ncc = getNhaCungCapById(id);

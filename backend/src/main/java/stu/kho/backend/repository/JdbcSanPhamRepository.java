@@ -1,21 +1,21 @@
 package stu.kho.backend.repository;
 
+import java.sql.PreparedStatement;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
+
 import stu.kho.backend.dto.SanPhamFilterRequest;
-import stu.kho.backend.entity.LoaiHang;
 import stu.kho.backend.entity.NhaCungCap;
 import stu.kho.backend.entity.SanPham;
-
-import java.sql.PreparedStatement;
-import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
 
 @Repository
 public class JdbcSanPhamRepository implements SanPhamRepository {
@@ -212,5 +212,13 @@ public class JdbcSanPhamRepository implements SanPhamRepository {
         } catch (Exception e) {
             return 0;
         }
+    }
+
+    @Override
+    public List<SanPham> findByTenSPIncludingDeleted(String tenSP) {
+        // SQL này KHÔNG có điều kiện "AND DaXoa = 0"
+        // Nó sẽ tìm thấy cả sản phẩm đang hoạt động và sản phẩm trong thùng rác
+        String sql = "SELECT * FROM sanpham WHERE TenSP = ?";
+        return jdbcTemplate.query(sql, sanPhamRowMapper, tenSP);
     }
 }

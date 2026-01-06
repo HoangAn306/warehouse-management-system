@@ -15,4 +15,5 @@ public interface NhaCungCapRepository {
     List<NhaCungCap> search(String keyword);
     void restoreById(Integer id);           // Khôi phục
     List<NhaCungCap> findAllDeleted();
+    List<NhaCungCap> findByTenNCCIncludingDeleted(String tenNCC);
 }

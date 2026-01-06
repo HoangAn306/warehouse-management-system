@@ -185,7 +185,7 @@ public class SanPhamService {
         String tenSpCheck = request.getTenSP().trim();
 
         // BƯỚC 2: Tìm tất cả sản phẩm đang hoạt động (Chưa xóa) có cùng tên
-        List<SanPham> existingProducts = sanPhamRepository.findByTenSP(tenSpCheck);
+        List<SanPham> existingProducts = sanPhamRepository.findByTenSPIncludingDeleted(tenSpCheck);
 
         // BƯỚC 3: Kiểm tra trùng lặp
         for (SanPham sp : existingProducts) {

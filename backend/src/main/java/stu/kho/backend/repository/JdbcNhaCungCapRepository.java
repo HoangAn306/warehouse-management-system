@@ -1,17 +1,18 @@
 package stu.kho.backend.repository;
 
+import java.sql.PreparedStatement;
+import java.sql.Statement;
+import java.util.List;
+import java.util.Optional;
+
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
-import stu.kho.backend.entity.NhaCungCap;
 
-import java.sql.PreparedStatement;
-import java.sql.Statement;
-import java.util.List;
-import java.util.Optional;
+import stu.kho.backend.entity.NhaCungCap;
 
 @Repository
 public class JdbcNhaCungCapRepository implements NhaCungCapRepository {
@@ -27,6 +28,7 @@ public class JdbcNhaCungCapRepository implements NhaCungCapRepository {
         ncc.setSdt(rs.getString("SDT"));
         ncc.setDiaChi(rs.getString("DiaChi"));
         ncc.setEmail(rs.getString("Email"));
+        ncc.setDaXoa(rs.getBoolean("DaXoa"));
         return ncc;
     };
 
@@ -120,5 +122,11 @@ public class JdbcNhaCungCapRepository implements NhaCungCapRepository {
         String sql = "SELECT * FROM nhacungcap WHERE DaXoa = 1";
         // Tái sử dụng RowMapper bạn đã khai báo
         return jdbcTemplate.query(sql, nccRowMapper);
+    }
+    @Override
+    public List<NhaCungCap> findByTenNCCIncludingDeleted(String tenNCC) {
+        // SQL này KHÔNG có điều kiện "AND DaXoa = 0"
+        String sql = "SELECT * FROM nhacungcap WHERE TenNCC = ?";
+        return jdbcTemplate.query(sql, nccRowMapper, tenNCC);
     }
 }
