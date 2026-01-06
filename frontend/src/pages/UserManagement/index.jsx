@@ -580,7 +580,7 @@ const UserManagementPage = () => {
               <Form.Item
                 name="tenDangNhap"
                 label="Tên Đăng Nhập"
-                rules={[{ required: true }]}
+                rules={[{ required: true,message:"Nhập tên đăng nhập" }]}
               >
                 <Input disabled={!!editingUser} />
               </Form.Item>
@@ -592,7 +592,7 @@ const UserManagementPage = () => {
               <Form.Item
                 name="hoTen"
                 label="Họ Tên"
-                rules={[{ required: true }]}
+                rules={[{ required: true,message:"Nhập họ tên" }]}
               >
                 <Input />
               </Form.Item>
@@ -607,7 +607,7 @@ const UserManagementPage = () => {
               <Form.Item
                 name="email"
                 label="Email"
-                rules={[{ required: true, type: "email" }]}
+                rules={[{ required: true, type: "email",message:"Nhập tên email" }]}
               >
                 <Input />
               </Form.Item>
@@ -619,7 +619,7 @@ const UserManagementPage = () => {
               <Form.Item
                 name="sdt"
                 label="Số Điện Thoại"
-                rules={[{ required: true }]}
+                rules={[{ required: true,message:"Nhập số điện thoại" }]}
               >
                 <Input />
               </Form.Item>
@@ -634,7 +634,7 @@ const UserManagementPage = () => {
               <Form.Item
                 name="maVaiTro"
                 label="Vai Trò"
-                rules={[{ required: true }]}
+                rules={[{ required: true,message:"Chọn vai trò" }]}
               >
                 <Select placeholder="Chọn một vai trò">
                   {danhSachVaiTro.map((vt) => (
@@ -656,7 +656,7 @@ const UserManagementPage = () => {
                 <Form.Item
                   name="matKhau"
                   label="Mật Khẩu"
-                  rules={[{ required: true }]}
+                  rules={[{ required: true,message:"Nhập mật khẩu" }]}
                 >
                   <Input.Password />
                 </Form.Item>
