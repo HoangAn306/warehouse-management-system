@@ -38,29 +38,30 @@ const CustomerPage = () => {
   // [2] Hook kiểm tra màn hình
   // screens.lg = true (>= 992px) -> Máy tính. False -> Mobile/Tablet.
   const screens = Grid.useBreakpoint();
-
+  // --- KHAI BÁO STATE (TRẠNG THÁI) ---
   const [customers, setCustomers] = useState([]);
   const [loading, setLoading] = useState(false);
 
   // State: Chế độ Thùng rác
   const [inTrashMode, setInTrashMode] = useState(false);
-
+  // State cho Modal (Form Thêm/Sửa)
   const [submitLoading, setSubmitLoading] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState(null);
+  // State quản lý Form và Thông báo
   const [form] = Form.useForm();
   const [messageApi, contextHolder] = message.useMessage();
 
-  // State Quyền hạn
+  // State Phân quyền
   const [permissions, setPermissions] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
-
+  // State Modal Xóa
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
-
+  // State Tìm kiếm
   const [keyword, setKeyword] = useState("");
 
-  // 1. LẤY DỮ LIỆU
+  // --- 1. HÀM TẢI DỮ LIỆU TỪ SERVER ---
   const fetchCustomers = useCallback(
     async (searchKey = "") => {
       setLoading(true);
@@ -88,7 +89,7 @@ const CustomerPage = () => {
     [messageApi, inTrashMode]
   );
 
-  // 2. KHỞI TẠO & PHÂN QUYỀN
+  // --- 2. HÀM KHỞI TẠO & CHECK QUYỀN (useEffect) ---
   useEffect(() => {
     const storedUser = localStorage.getItem("user_info");
     if (storedUser) {
@@ -121,7 +122,7 @@ const CustomerPage = () => {
         if (roleName === "ADMIN" || hasViewPerm) {
           // [SỬA LỖI TẠI ĐÂY]
           // Gọi không tham số để tải lại danh sách đầy đủ khi init hoặc đổi chế độ
-          fetchCustomers(); 
+          fetchCustomers();
         } else {
           setLoading(false);
         }
@@ -142,19 +143,20 @@ const CustomerPage = () => {
 
   const checkPerm = (id) => isAdmin || permissions.includes(id);
 
-  // --- HANDLERS MODAL ---
+  // --- CÁC HÀM XỬ LÝ SỰ KIỆN (HANDLERS) ---
+  // Mở modal Thêm mới
   const handleOpenModal = () => {
     setEditingCustomer(null);
     form.resetFields();
     setIsModalVisible(true);
   };
-
+  // Mở modal Sửa
   const handleEdit = (record) => {
     setEditingCustomer(record);
     form.setFieldsValue(record);
     setIsModalVisible(true);
   };
-
+  // Xử lý Khôi phục từ thùng rác
   const handleRestore = async (record) => {
     try {
       await customerService.restoreCustomer(record.maKH);
@@ -164,7 +166,7 @@ const CustomerPage = () => {
       messageApi.error(error.response?.data?.message || "Lỗi khi khôi phục!");
     }
   };
-
+  // --- [QUAN TRỌNG] XỬ LÝ LƯU (THÊM/SỬA) & KIỂM TRA TRÙNG LẶP ---
   const handleOk = () => {
     form
       .validateFields()
@@ -206,12 +208,12 @@ const CustomerPage = () => {
       })
       .catch(() => {});
   };
-
+  // Mở modal xác nhận xóa
   const handleDelete = (id) => {
     setDeletingId(id);
     setIsDeleteModalOpen(true);
   };
-
+  // Xác nhận xóa
   const handleDeleteConfirm = async () => {
     try {
       await customerService.deleteCustomer(deletingId);
@@ -225,8 +227,7 @@ const CustomerPage = () => {
     setDeletingId(null);
   };
 
-  // --- [3] CẤU HÌNH CỘT RESPONSIVE ---
-  // Logic: screens.lg (PC) thì ghim cột. Mobile thì thả lỏng.
+  // --- [3] CẤU HÌNH CỘT BẢNG (TABLE COLUMNS) ---
   const columns = [
     {
       title: "Mã",
@@ -322,10 +323,13 @@ const CustomerPage = () => {
       </Card>
     );
   }
-
+  // --- GIAO DIỆN CHÍNH (RENDER) ---
   return (
-    <div style={{ padding: "0 10px" }}> {/* Padding nhỏ cho mobile */}
+    <div style={{ padding: "0 10px" }}>
+      {" "}
+      {/* Padding nhỏ cho mobile */}
       {contextHolder}
+      {/* 1. Thanh công cụ (Tìm kiếm, Nút thêm, Thùng rác) */}
       <Card
         style={{ marginBottom: 16 }}
         bodyStyle={{ padding: "16px" }}
@@ -336,7 +340,10 @@ const CustomerPage = () => {
           justify="space-between"
         >
           {/* Cụm tìm kiếm: Full width trên mobile */}
-          <Col xs={24} md={12}>
+          <Col
+            xs={24}
+            md={12}
+          >
             {inTrashMode ? (
               <h3 style={{ margin: 0, color: "#ff4d4f" }}>
                 <RestOutlined /> Thùng rác
@@ -353,11 +360,12 @@ const CustomerPage = () => {
               />
             )}
           </Col>
-          
+
           {/* Cụm nút bấm: Full width trên mobile, canh phải trên PC */}
-          <Col 
-            xs={24} md={12} 
-            style={{ textAlign: screens.md ? 'right' : 'left' }}
+          <Col
+            xs={24}
+            md={12}
+            style={{ textAlign: screens.md ? "right" : "left" }}
           >
             <Space wrap>
               {!inTrashMode && (
@@ -417,20 +425,19 @@ const CustomerPage = () => {
           </Col>
         </Row>
       </Card>
-
+      {/* 2. Bảng dữ liệu */}
       <Table
         className="fixed-height-table"
         columns={columns}
         dataSource={customers}
         loading={loading}
         rowKey="maKH"
-        pagination={{ pageSize: 5, size: 'small' }}
+        pagination={{ pageSize: 5, size: "small" }}
         // [QUAN TRỌNG] Cho phép cuộn ngang
         scroll={{ x: 1000 }}
         size="small"
       />
-
-      {/* MODAL THÊM/SỬA */}
+      {/* 3. Modal Thêm/Sửa */}
       <Modal
         title={editingCustomer ? "Sửa Khách Hàng" : "Thêm Khách Hàng"}
         open={isModalVisible}
@@ -478,8 +485,7 @@ const CustomerPage = () => {
           </Form.Item>
         </Form>
       </Modal>
-
-      {/* MODAL XÓA */}
+      {/* 4. Modal xác nhận xóa */}
       <Modal
         title="Xác nhận xóa"
         open={isDeleteModalOpen}

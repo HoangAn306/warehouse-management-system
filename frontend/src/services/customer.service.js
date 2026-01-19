@@ -1,10 +1,10 @@
 // src/services/customer.service.js
 
-import api from "./api";
+import api from "./api";// Import axios
 
-const API_ENDPOINT = "/khachhang";
+const API_ENDPOINT = "/khachhang";// Đường dẫn gốc
 
-// 1. Lấy danh sách khách hàng
+// 1. Lấy danh sách tất cả khách hàng
 export const getAllCustomers = () => {
   return api.get(API_ENDPOINT);
 };
@@ -23,17 +23,17 @@ export const updateCustomer = (id, data) => {
 export const deleteCustomer = (id) => {
   return api.delete(`${API_ENDPOINT}/${id}`);
 };
-
+// 5. Tìm kiếm khách hàng
 export const searchCustomers = (keyword) => {
   return api.get(`${API_ENDPOINT}/search`, {
-    params: { query: keyword } // API này tìm được cả Tên và SĐT
+    params: { query: keyword } 
   });
 };
+// 6. Lấy danh sách khách hàng trong thùng rác
 export const getTrashCustomers = () => {
   return api.get(`${API_ENDPOINT}/trash`);
 };
-
-// 2. Khôi phục khách hàng
+// 7. Khôi phục khách hàng từ thùng rác
 export const restoreCustomer = (id) => {
   return api.put(`${API_ENDPOINT}/${id}/restore`);
 };

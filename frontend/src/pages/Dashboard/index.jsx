@@ -41,7 +41,7 @@ const PERM_DASHBOARD_VIEW = 130;
 
 const Dashboard = () => {
   const screens = Grid.useBreakpoint();
-
+  // --- 1. STATE QUẢN LÝ DỮ LIỆU ---
   const [loading, setLoading] = useState(false);
 
   const [stats, setStats] = useState({});
@@ -57,7 +57,7 @@ const Dashboard = () => {
     from: dayjs().startOf("month"),
     to: dayjs().endOf("month"),
   });
-
+  // --- 2. STATE PHÂN QUYỀN (AUTHORIZATION) ---
   const [permissions, setPermissions] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -86,7 +86,7 @@ const Dashboard = () => {
   const canViewDashboard = isAdmin || permissions.includes(PERM_DASHBOARD_VIEW);
 
   const formatCurrency = (value) => `${Number(value || 0).toLocaleString()} đ`;
-
+  // --- 3. HÀM GỌI API (FETCH DATA) ---
   const fetchData = useCallback(async () => {
     if (!canViewDashboard) return;
 
@@ -139,7 +139,7 @@ const Dashboard = () => {
       setFilter({ from: dates[0], to: dates[1] });
     }
   };
-
+  // --- 4. CẤU HÌNH CỘT CHO CÁC BẢNG ---
   const topProductColumns = [
     {
       title: "Sản phẩm",
@@ -213,7 +213,7 @@ const Dashboard = () => {
       },
     },
   ];
-
+  // --- 5. RENDER GIAO DIỆN ---
   if (!canViewDashboard) {
     return (
       <div style={{ padding: 24 }}>

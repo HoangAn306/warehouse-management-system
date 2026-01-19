@@ -88,7 +88,7 @@ const PERMISSION_MAP = {
 const SystemLogPage = () => {
   // [2] Hook kiểm tra màn hình
   const screens = Grid.useBreakpoint();
-
+// --- STATE QUẢN LÝ DỮ LIỆU ---
   const [logs, setLogs] = useState([]);
   const [displayedLogs, setDisplayedLogs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -116,7 +116,7 @@ const SystemLogPage = () => {
 
   const [permissions, setPermissions] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
-
+// --- 1. KIỂM TRA QUYỀN TRUY CẬP ---
   useEffect(() => {
     const storedUser = localStorage.getItem("user_info");
     if (storedUser) {
@@ -137,7 +137,7 @@ const SystemLogPage = () => {
 
   const canViewLog = isAdmin || permissions.includes(PERM_VIEW_LOG);
 
-  // HÀM TẢI DỮ LIỆU & TẠO MAP
+  // --- 2. HÀM TẢI DỮ LIỆU TỔNG HỢP (QUAN TRỌNG) ---
   const fetchData = useCallback(async () => {
     if (!canViewLog) return;
 
@@ -232,7 +232,7 @@ const SystemLogPage = () => {
   useEffect(() => {
     if (canViewLog) fetchData();
   }, [fetchData, canViewLog]);
-
+// --- 3. LOGIC LỌC NGÀY (CLIENT-SIDE) ---
   useEffect(() => {
     if (!dateRange) {
       setDisplayedLogs(logs);
@@ -253,7 +253,7 @@ const SystemLogPage = () => {
     setTableParams({ pagination, filters, ...sorter });
   };
 
-  // HÀM FORMAT THÔNG MINH
+// --- 4. HÀM FORMAT CHUỖI LOG (MAGIC FUNCTION) ---
   const formatActionText = (text) => {
     if (!text) return "";
     let newText = text;
@@ -299,7 +299,7 @@ const SystemLogPage = () => {
     return <span dangerouslySetInnerHTML={{ __html: newText }} />;
   };
 
-  // --- [3] CẤU HÌNH CỘT RESPONSIVE ---
+  // --- 5. CẤU HÌNH CỘT BẢNG ---
   const columns = [
     {
       title: "Mã HD",
@@ -371,7 +371,7 @@ const SystemLogPage = () => {
       </div>
     );
   }
-
+// --- 6. RENDER GIAO DIỆN ---
   return (
     <div style={{ padding: "0 10px" }}>
       {" "}

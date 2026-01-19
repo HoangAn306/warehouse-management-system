@@ -1,6 +1,7 @@
 // src/pages/CategoryPage/index.jsx
 
 import React, { useState, useEffect, useCallback } from "react";
+// Import các component giao diện từ Ant Design
 import {
   Table,
   Button,
@@ -12,10 +13,10 @@ import {
   Card,
   Row,
   Col,
-  //Tag,
   Tooltip,
-  Grid, // [1] Import Grid
+  Grid,
 } from "antd";
+// Import các icon
 import {
   PlusOutlined,
   EditOutlined,
@@ -27,42 +28,45 @@ import {
 } from "@ant-design/icons";
 import * as categoryService from "../../services/category.service";
 
-// --- QUYỀN HẠN ---
+// --- ĐỊNH NGHĨA QUYỀN HẠN (CONSTANTS) ---
 const PERM_VIEW = 140;
 const PERM_CREATE = 141;
 const PERM_EDIT = 142;
 const PERM_DELETE = 143;
 
 const CategoryPage = () => {
-  // [2] Hook kiểm tra màn hình (screens.lg = PC/Laptop)
+  // [RESPONSIVE] Hook kiểm tra kích thước màn hình
+  // screens.lg = true nếu màn hình lớn (Laptop/PC), false nếu là Mobile/Tablet
   const screens = Grid.useBreakpoint();
-
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [inTrashMode, setInTrashMode] = useState(false);
-
+  // --- KHAI BÁO STATE (TRẠNG THÁI) ---
+  const [categories, setCategories] = useState([]); // Chứa danh sách loại hàng
+  const [loading, setLoading] = useState(false); // Trạng thái loading
+  const [inTrashMode, setInTrashMode] = useState(false); // True: đang xem thùng rác, False: xem danh sách chính
+  // State cho Modal Thêm/Sửa
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [editingCategory, setEditingCategory] = useState(null);
+  const [editingCategory, setEditingCategory] = useState(null); // Lưu thông tin dòng đang sửa (null nếu là thêm mới)
+  // State cho Modal Xóa
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
 
-  const [form] = Form.useForm();
-  const [messageApi, contextHolder] = message.useMessage();
+  const [form] = Form.useForm(); // Hook quản lý form của Ant Design
+  const [messageApi, contextHolder] = message.useMessage(); // Hook hiển thị thông báo (Toast message)
 
-  const [permissions, setPermissions] = useState([]);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [permissions, setPermissions] = useState([]); // Danh sách quyền của user đang đăng nhập
+  const [isAdmin, setIsAdmin] = useState(false); // Kiểm tra có phải Admin không
 
-  // --- 1. HÀM TẢI DỮ LIỆU ---
+  // --- 1. HÀM TẢI DỮ LIỆU TỪ API ---
   const fetchCategories = useCallback(async () => {
     setLoading(true);
     try {
       let res;
+      // Nếu đang ở chế độ thùng rác -> Gọi API lấy rác, ngược lại gọi API lấy tất cả
       if (inTrashMode) {
         res = await categoryService.getTrashCategories();
       } else {
         res = await categoryService.getAllCategories();
       }
-
+      // Xử lý dữ liệu trả về (tùy format backend trả về data hay data.content)
       let data = res.data;
       if (data.content) data = data.content;
 
@@ -78,8 +82,9 @@ const CategoryPage = () => {
     }
   }, [inTrashMode]);
 
-  // --- 2. CHECK QUYỀN ---
+  // --- 2. HÀM KIỂM TRA QUYỀN (AUTHORIZATION) ---
   useEffect(() => {
+    // Lấy thông tin user từ LocalStorage khi mới vào trang
     const storedUser = localStorage.getItem("user_info");
     if (storedUser) {
       try {
@@ -115,19 +120,20 @@ const CategoryPage = () => {
 
   const checkPerm = (id) => isAdmin || permissions.includes(id);
 
-  // --- HANDLERS ---
+  // --- CÁC HÀM XỬ LÝ SỰ KIỆN (HANDLERS) ---
+  // Mở Modal để thêm mới
   const handleOpenModal = () => {
     setEditingCategory(null);
     form.resetFields();
     setIsModalVisible(true);
   };
-
+  // Mở Modal để chỉnh sửa
   const handleEdit = (record) => {
     setEditingCategory(record);
     form.setFieldsValue(record);
     setIsModalVisible(true);
   };
-
+  // Xử lý khi bấm nút OK (Lưu) trên Modal
   const handleOk = () => {
     form
       .validateFields()
@@ -146,32 +152,28 @@ const CategoryPage = () => {
           setIsModalVisible(false);
           fetchCategories();
         } catch (error) {
-          // 1. Lấy message từ backend (ưu tiên .message, nếu không có thì lấy toàn bộ data)
+          // 1. Lấy message từ backend
           const errorMessage =
             error.response?.data?.message ||
             error.response?.data ||
             "Lỗi lưu dữ liệu!";
-
-          // 2. Chuyển về chữ thường để kiểm tra từ khóa "duplicate"
           if (errorMessage.toString().toLowerCase().includes("duplicate")) {
-            // Nếu phát hiện trùng -> Thông báo tiếng Việt dễ hiểu
             messageApi.error(
               `Tên loại hàng "${values.tenLoai}" đã tồn tại! Vui lòng chọn tên khác.`
             );
           } else {
-            // [SỬA ĐOẠN NÀY] Nếu lỗi khác -> Hiển thị nguyên văn message từ Backend
             messageApi.error(errorMessage);
           }
         }
       })
       .catch(() => {});
   };
-
+  // Mở modal xác nhận xóa
   const handleDelete = (id) => {
     setDeletingId(id);
     setIsDeleteModalOpen(true);
   };
-
+  // Xác nhận xóa
   const handleDeleteConfirm = async () => {
     try {
       await categoryService.deleteCategory(deletingId);
@@ -182,7 +184,7 @@ const CategoryPage = () => {
     }
     setIsDeleteModalOpen(false);
   };
-
+  // Khôi phục từ thùng rác
   const handleRestore = async (id) => {
     try {
       await categoryService.restoreCategory(id);
@@ -193,28 +195,26 @@ const CategoryPage = () => {
     }
   };
 
-  // --- [3] CẤU HÌNH CỘT RESPONSIVE ---
-  // Logic: Hiển thị tất cả cột, cuộn ngang trên mobile.
-  // Ghim cột khi ở màn hình lớn (screens.lg).
+  // --- [3] CẤU HÌNH CỘT CHO BẢNG (TABLE) ---
   const columns = [
     {
       title: "Mã",
       dataIndex: "maLoai",
       width: 80,
       align: "center",
-      fixed: screens.lg ? "left" : null, // Ghim trái trên PC
+      fixed: screens.lg ? "left" : null,
     },
     {
       title: "Tên Loại Hàng",
       dataIndex: "tenLoai",
       width: 200,
-      fixed: screens.lg ? "left" : null, // Ghim trái trên PC
+      fixed: screens.lg ? "left" : null,
       render: (t) => <b>{t}</b>,
     },
     {
       title: "Mô Tả",
       dataIndex: "moTa",
-      width: 250, // Đặt width để có thể cuộn ngang
+      width: 250,
     },
     // {
     //   title: "Trạng thái",
@@ -232,7 +232,7 @@ const CategoryPage = () => {
       key: "action",
       width: 110,
       align: "center",
-      fixed: screens.lg ? "right" : null, // Ghim phải trên PC
+      fixed: screens.lg ? "right" : null,
       render: (_, record) => {
         const allowEdit = checkPerm(PERM_EDIT);
         const allowDelete = checkPerm(PERM_DELETE);
@@ -283,11 +283,11 @@ const CategoryPage = () => {
       </Card>
     );
   }
-
+  // --- GIAO DIỆN CHÍNH (RENDER) ---
   return (
     <div style={{ padding: "0 10px" }}>
-      {/* Thêm padding nhỏ cho mobile */}
       {contextHolder}
+      {/* 1. Header Card (Tiêu đề + Nút bấm) */}
       <Card
         style={{ marginBottom: 16 }}
         bodyStyle={{ padding: "16px" }}
@@ -295,9 +295,8 @@ const CategoryPage = () => {
         <Row
           justify="space-between"
           align="middle"
-          gutter={[0, 16]} // Khoảng cách dọc khi xuống dòng
+          gutter={[0, 16]}
         >
-          {/* Tiêu đề: Mobile full dòng, Desktop tự động */}
           <Col
             xs={24}
             md="auto"
@@ -313,7 +312,7 @@ const CategoryPage = () => {
             </h3>
           </Col>
 
-          {/* Nút bấm: Mobile full dòng, Desktop tự động */}
+          {/* Nhóm nút bấm chức năng */}
           <Col
             xs={24}
             md="auto"
@@ -365,6 +364,7 @@ const CategoryPage = () => {
           </Col>
         </Row>
       </Card>
+      {/* 2. Bảng dữ liệu */}
       <Table
         className="fixed-height-table"
         columns={columns}
@@ -372,16 +372,15 @@ const CategoryPage = () => {
         loading={loading}
         rowKey="maLoai"
         pagination={{ pageSize: 10, size: "small" }}
-        // Scroll ngang 700px để đảm bảo đủ chỗ cho tất cả các cột
         scroll={{ x: 700 }}
-        size={screens.md ? "middle" : "small"} // Mobile dùng bảng nhỏ
+        size={screens.md ? "middle" : "small"}
       />
+      {/* 3. Modal Thêm/Sửa */}
       <Modal
         title={editingCategory ? "Sửa Loại Hàng" : "Thêm Loại Hàng"}
         open={isModalVisible}
         onOk={handleOk}
         onCancel={() => setIsModalVisible(false)}
-        // Responsive width cho Modal
         width={screens.md ? 520 : "100%"}
         style={{ top: 20 }}
       >
@@ -404,6 +403,7 @@ const CategoryPage = () => {
           </Form.Item>
         </Form>
       </Modal>
+      {/* 4. Modal Xác nhận xóa */}
       <Modal
         title="Xác nhận xóa"
         open={isDeleteModalOpen}

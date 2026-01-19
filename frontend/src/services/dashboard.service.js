@@ -6,13 +6,13 @@ const DASHBOARD_ENDPOINT = "/dashboard";
 const REPORT_ENDPOINT = "/baocao";
 
 // 1. Lấy số liệu tổng quan (Stats)
-// Params: { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' }
+
 export const getStats = (params) => {
   return api.get(`${DASHBOARD_ENDPOINT}/stats`, { params });
 };
 
 // 2. Lấy dữ liệu biểu đồ (Chart)
-// Params: { year: 2025 }
+
 export const getChartData = (year) => {
   return api.get(`${DASHBOARD_ENDPOINT}/chart`, { 
     params: { year } 
@@ -20,7 +20,6 @@ export const getChartData = (year) => {
 };
 
 // 3. Lấy Top sản phẩm
-// Params: { type: 'export' | 'import', limit: 5, from, to }
 export const getTopProducts = (params) => {
   return api.get(`${DASHBOARD_ENDPOINT}/top-products`, { params });
 };
