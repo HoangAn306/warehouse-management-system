@@ -207,7 +207,7 @@ const ReportPage = () => {
       fixed: screens.md ? "left" : null,
     },
     {
-      title: "ĐVT",
+      title: "Đơn vị tính",
       dataIndex: "donViTinh",
       key: "donViTinh",
       width: 70,
@@ -219,6 +219,20 @@ const ReportPage = () => {
       key: "tenKho",
       width: 120,
       responsive: ["md"],
+    },
+    {
+      title: "Số lô",
+      dataIndex: "soLo",
+      key: "soLo",
+      width: 70,
+      responsive: ["sm"], 
+    },
+    {
+      title: "Ngày hết hạn",
+      dataIndex: "ngayHetHan",
+      key: "ngayHetHan",
+      width: 70,
+      responsive: ["sm"], 
     },
     {
       title: "Tồn",
@@ -240,7 +254,6 @@ const ReportPage = () => {
         const min = record.mucTonToiThieu || 0;
         const max = record.mucTonToiDa || 0;
 
-        // Rút gọn chữ trên Mobile để đỡ tốn chỗ
         if (ton <= min) {
           return (
             <Tag

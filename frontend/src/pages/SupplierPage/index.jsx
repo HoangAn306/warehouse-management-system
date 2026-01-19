@@ -236,7 +236,7 @@ const SupplierPage = () => {
       fixed: screens.lg ? "left" : null,
     },
     {
-      title: "Tên NCC",
+      title: "Tên nhà cung cấp",
       dataIndex: "tenNCC",
       key: "tenNCC",
       width: 200,

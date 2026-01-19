@@ -100,9 +100,9 @@ const ProductPage = () => {
           const matchLoai = !filter.maLoai || item.maLoai === filter.maLoai;
           const matchNCC =
             !filter.maNCC ||
-            (item.danhSachNCC && 
-             Array.isArray(item.danhSachNCC) && 
-             item.danhSachNCC.some(ncc => ncc.maNCC === filter.maNCC));
+            (item.danhSachNCC &&
+              Array.isArray(item.danhSachNCC) &&
+              item.danhSachNCC.some((ncc) => ncc.maNCC === filter.maNCC));
 
           return matchName && matchLoai && matchNCC;
         });
@@ -191,13 +191,13 @@ const ProductPage = () => {
     // [FIX QUAN TRỌNG] Xử lý Nhà cung cấp
     // Form cần mảng ID [1, 2], nhưng record có thể là mảng đối tượng [{maNCC:1}, {maNCC:2}]
     let selectedNCCs = [];
-    
+
     if (record.danhSachNCC && Array.isArray(record.danhSachNCC)) {
-        // Trường hợp record chứa danh sách chi tiết (thường thấy khi lấy GetAll)
-        selectedNCCs = record.danhSachNCC.map(ncc => ncc.maNCC);
+      // Trường hợp record chứa danh sách chi tiết (thường thấy khi lấy GetAll)
+      selectedNCCs = record.danhSachNCC.map((ncc) => ncc.maNCC);
     } else if (record.danhSachMaNCC && Array.isArray(record.danhSachMaNCC)) {
-        // Trường hợp record chứa sẵn mảng ID
-        selectedNCCs = record.danhSachMaNCC;
+      // Trường hợp record chứa sẵn mảng ID
+      selectedNCCs = record.danhSachMaNCC;
     }
 
     // Đổ dữ liệu vào Form
@@ -223,7 +223,7 @@ const ProductPage = () => {
             await productService.updateProduct(
               editingProduct.maSP,
               values,
-              file
+              file,
             );
             messageApi.success("Cập nhật thành công!");
           } else {
@@ -234,14 +234,16 @@ const ProductPage = () => {
           fetchProducts();
         } catch (error) {
           // [SỬA ĐOẠN NÀY] Bắt lỗi trùng tên từ Backend
-          const errorMessage = 
-            error.response?.data?.message || 
-            error.response?.data || 
+          const errorMessage =
+            error.response?.data?.message ||
+            error.response?.data ||
             "Lỗi khi lưu sản phẩm!";
 
           // Kiểm tra nếu thông báo lỗi có chứa từ khóa "duplicate"
           if (errorMessage.toString().toLowerCase().includes("duplicate")) {
-            messageApi.error(`Tên sản phẩm "${values.tenSP}" đã tồn tại! Vui lòng đặt tên khác.`);
+            messageApi.error(
+              `Tên sản phẩm "${values.tenSP}" đã tồn tại! Vui lòng đặt tên khác.`,
+            );
           } else {
             // Hiển thị các lỗi khác (như lỗi file quá lớn, lỗi mạng...)
             messageApi.error(errorMessage);
@@ -302,21 +304,38 @@ const ProductPage = () => {
       width: 80,
       align: "center",
       // Chỉ ghim trên màn hình lớn (PC)
-      fixed: screens.lg ? 'left' : null, 
+      fixed: screens.lg ? "left" : null,
       render: (src) =>
         src ? (
-          <Image src={src} width={50} height={50} style={{ objectFit: 'cover' }} />
+          <Image
+            src={src}
+            width={50}
+            height={50}
+            style={{ objectFit: "cover" }}
+          />
         ) : (
-          <div style={{ width: 50, height: 50, background: "#f0f0f0", margin: "auto", display: 'flex', alignItems: 'center', justifyContent: 'center' }}>No</div>
+          <div
+            style={{
+              width: 50,
+              height: 50,
+              background: "#f0f0f0",
+              margin: "auto",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            No
+          </div>
         ),
     },
-    { 
-      title: "Tên Sản Phẩm", 
-      dataIndex: "tenSP", 
-      width: 180, 
+    {
+      title: "Tên Sản Phẩm",
+      dataIndex: "tenSP",
+      width: 180,
       // Chỉ ghim trên màn hình lớn (PC)
-      fixed: screens.lg ? 'left' : null,
-      render: (t) => <b>{t}</b> 
+      fixed: screens.lg ? "left" : null,
+      render: (t) => <b>{t}</b>,
     },
     {
       title: "Loại Hàng",
@@ -324,7 +343,7 @@ const ProductPage = () => {
       width: 120,
       render: (id) => listLoaiHang.find((l) => l.maLoai === id)?.tenLoai || id,
     },
-   {
+    {
       title: "Nhà Cung Cấp",
       key: "ncc",
       width: 250,
@@ -333,7 +352,11 @@ const ProductPage = () => {
         const listNCC = record.danhSachNCC;
         if (Array.isArray(listNCC) && listNCC.length > 0) {
           return listNCC.map((ncc) => (
-            <Tag key={ncc.maNCC} color="blue" style={{ marginBottom: 4 }}>
+            <Tag
+              key={ncc.maNCC}
+              color="blue"
+              style={{ marginBottom: 4 }}
+            >
               {ncc.tenNCC}
             </Tag>
           ));
@@ -342,7 +365,7 @@ const ProductPage = () => {
       },
     },
     {
-      title: "ĐVT",
+      title: "Đơn vị tính",
       dataIndex: "donViTinh",
       width: 80,
       align: "center",
@@ -352,22 +375,24 @@ const ProductPage = () => {
       dataIndex: "giaNhap",
       align: "right",
       width: 120,
-      render: (v) => <span style={{ fontWeight: 500 }}>{Number(v).toLocaleString()} đ</span>,
+      render: (v) => (
+        <span style={{ fontWeight: 500 }}>{Number(v).toLocaleString()} đ</span>
+      ),
     },
-    {
-      title: "Tồn Kho",
-      dataIndex: "soLuongTon",
-      align: "center",
-      width: 90,
-      render: (v) => <Tag color={v > 10 ? "blue" : "red"}>{v}</Tag>,
-    },
+    // {
+    //   title: "Tồn Kho",
+    //   dataIndex: "soLuongTon",
+    //   align: "center",
+    //   width: 90,
+    //   render: (v) => <Tag color={v > 10 ? "blue" : "red"}>{v}</Tag>,
+    // },
     {
       title: "Hành động",
       key: "action",
       width: 120,
       align: "center",
       // Chỉ ghim trên màn hình lớn (PC)
-      fixed: screens.lg ? 'right' : null,
+      fixed: screens.lg ? "right" : null,
       render: (_, record) => {
         const allowEdit = checkPerm(PERM_EDIT);
         const allowDelete = checkPerm(PERM_DELETE);
@@ -412,7 +437,7 @@ const ProductPage = () => {
   ];
 
   return (
-    <div style={{ padding: '0 10px' }}>
+    <div style={{ padding: "0 10px" }}>
       {contextHolder}
       <Card
         style={{ marginBottom: 16 }}
@@ -422,7 +447,10 @@ const ProductPage = () => {
           gutter={[16, 16]}
           align="middle"
         >
-          <Col xs={24} md={6}>
+          <Col
+            xs={24}
+            md={6}
+          >
             <Input
               placeholder="Tên sản phẩm..."
               prefix={<SearchOutlined />}
@@ -430,7 +458,10 @@ const ProductPage = () => {
               onChange={(e) => setFilter({ ...filter, tenSP: e.target.value })}
             />
           </Col>
-          <Col xs={12} md={4}>
+          <Col
+            xs={12}
+            md={4}
+          >
             <Select
               placeholder="Loại hàng"
               style={{ width: "100%" }}
@@ -448,7 +479,10 @@ const ProductPage = () => {
               ))}
             </Select>
           </Col>
-          <Col xs={12} md={4}>
+          <Col
+            xs={12}
+            md={4}
+          >
             <Select
               placeholder="Nhà cung cấp"
               style={{ width: "100%" }}
@@ -467,7 +501,8 @@ const ProductPage = () => {
             </Select>
           </Col>
           <Col
-            xs={24} md={10}
+            xs={24}
+            md={10}
             style={{ textAlign: screens.md ? "right" : "left" }}
           >
             <Space>
@@ -541,7 +576,7 @@ const ProductPage = () => {
         dataSource={products}
         loading={loading}
         rowKey="maSP"
-        pagination={{ pageSize: 5, size: 'small' }}
+        pagination={{ pageSize: 5, size: "small" }}
         scroll={{ x: 1200 }}
         size="small"
       />
@@ -560,16 +595,22 @@ const ProductPage = () => {
         >
           {/* Hàng 1 */}
           <Row gutter={16}>
-            <Col xs={24} md={12}>
+            <Col
+              xs={24}
+              md={12}
+            >
               <Form.Item
                 name="tenSP"
                 label="Tên Sản Phẩm"
                 rules={[{ required: true, message: "Nhập tên sản phẩm" }]}
               >
-                <Input placeholder="Nhập tên sản phẩm"/>
+                <Input placeholder="Nhập tên sản phẩm" />
               </Form.Item>
             </Col>
-            <Col xs={24} md={12}>
+            <Col
+              xs={24}
+              md={12}
+            >
               <Form.Item
                 name="maLoai"
                 label="Loại Hàng"
@@ -591,7 +632,10 @@ const ProductPage = () => {
 
           {/* Hàng 2 */}
           <Row gutter={16}>
-            <Col xs={24} md={12}>
+            <Col
+              xs={24}
+              md={12}
+            >
               <Form.Item
                 name="donViTinh"
                 label="Đơn vị tính"
@@ -600,7 +644,10 @@ const ProductPage = () => {
                 <Input placeholder="Nhập đơn vị tính" />
               </Form.Item>
             </Col>
-            <Col xs={24} md={12}>
+            <Col
+              xs={24}
+              md={12}
+            >
               <Form.Item
                 name="giaNhap"
                 label="Giá nhập ban đầu"
@@ -621,26 +668,32 @@ const ProductPage = () => {
           </Row>
 
           <Row gutter={16}>
-            <Col xs={24} md={12}>
+            <Col
+              xs={24}
+              md={12}
+            >
               <Form.Item
                 name="mucTonToiThieu"
                 label="Mức tồn tối thiểu"
-                rules={[{ required: true,message: "Nhập mức tồn tối thiểu"}]}
+                rules={[{ required: true, message: "Nhập mức tồn tối thiểu" }]}
               >
                 <InputNumber
                   style={{ width: "100%" }}
                   min={0}
                   precision={0} // [QUAN TRỌNG] Chỉ cho nhập số nguyên, không hiện số thập phân
-                  step={1}      // [TÙY CHỌN] Khi bấm nút tăng giảm sẽ nhảy 1 đơn vị
+                  step={1} // [TÙY CHỌN] Khi bấm nút tăng giảm sẽ nhảy 1 đơn vị
                   placeholder="Nhập mức tồn tối thiểu"
                 />
               </Form.Item>
             </Col>
-            <Col xs={24} md={12}>
+            <Col
+              xs={24}
+              md={12}
+            >
               <Form.Item
                 name="mucTonToiDa"
                 label="Mức tồn tối đa"
-                rules={[{ required: true,message: "Nhập mức tồn tối thiểu"}]}
+                rules={[{ required: true, message: "Nhập mức tồn tối thiểu" }]}
               >
                 <InputNumber
                   style={{ width: "100%" }}

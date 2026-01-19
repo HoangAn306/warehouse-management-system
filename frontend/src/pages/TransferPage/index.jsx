@@ -149,7 +149,7 @@ const TransferPage = () => {
               const allFiltered = response.data;
               // Sort giảm dần theo ngày (nếu cần)
               allFiltered.sort(
-                (a, b) => new Date(b.ngayChuyen) - new Date(a.ngayChuyen)
+                (a, b) => new Date(b.ngayChuyen) - new Date(a.ngayChuyen),
               );
 
               const startIndex = (page - 1) * pageSize;
@@ -175,7 +175,7 @@ const TransferPage = () => {
           if (Array.isArray(allData)) {
             // Sort giảm dần theo ngày
             allData.sort(
-              (a, b) => new Date(b.ngayChuyen) - new Date(a.ngayChuyen)
+              (a, b) => new Date(b.ngayChuyen) - new Date(a.ngayChuyen),
             );
 
             const startIndex = (page - 1) * pageSize;
@@ -199,7 +199,7 @@ const TransferPage = () => {
       }
       setLoading(false);
     },
-    [messageApi]
+    [messageApi],
   );
 
   const fetchCommonData = useCallback(async () => {
@@ -355,7 +355,7 @@ const TransferPage = () => {
         setSelectedSourceKho(data.maKhoXuat);
         try {
           const resInv = await warehouseService.getInventoryByWarehouse(
-            data.maKhoXuat
+            data.maKhoXuat,
           );
           setSourceInventory(resInv.data || []);
         } catch (e) {
@@ -382,7 +382,7 @@ const TransferPage = () => {
           if (editingRecord) {
             await transferService.updateTransfer(
               editingRecord.maPhieuDC,
-              values
+              values,
             );
             messageApi.success("Cập nhật thành công!");
           } else {
@@ -393,7 +393,7 @@ const TransferPage = () => {
           fetchData(pagination.current, pagination.pageSize, filter);
         } catch (error) {
           messageApi.error(
-            error.response?.data?.message || "Lỗi khi lưu phiếu!"
+            error.response?.data?.message || "Lỗi khi lưu phiếu!",
           );
         }
       })
@@ -464,7 +464,7 @@ const TransferPage = () => {
       fetchData(pagination.current, pagination.pageSize, filter);
     } catch (e) {
       messageApi.error(
-        e.response?.data?.message || "Lỗi xóa (Phiếu đã có ràng buộc)!"
+        e.response?.data?.message || "Lỗi xóa (Phiếu đã có ràng buộc)!",
       );
     }
     setIsDeleteModalOpen(false);
@@ -886,7 +886,7 @@ const TransferPage = () => {
                 validator: async (_, names) => {
                   if (!names || names.length < 1) {
                     return Promise.reject(
-                      new Error("Vui lòng thêm ít nhất một sản phẩm!")
+                      new Error("Vui lòng thêm ít nhất một sản phẩm!"),
                     );
                   }
                 },
@@ -907,53 +907,79 @@ const TransferPage = () => {
                     align="middle"
                   >
                     {/* 1. Sản phẩm */}
-                    <Col
-                      xs={24}
-                      md={10}
-                    >
-                      <Form.Item
-                        {...restField}
-                        name={[name, "maSP"]}
-                        label={!screens.md ? "Sản phẩm" : null}
-                        rules={[{ required: true, message: "Chọn sản phẩm" }]}
-                        style={{ marginBottom: 0 }}
-                      >
-                        <Select
-                          style={{ width: "100%" }}
-                          placeholder={
-                            selectedSourceKho
-                              ? "Chọn sản phẩm"
-                              : "Chọn Kho Xuất trước"
-                          }
-                          showSearch
-                          optionFilterProp="children"
-                          disabled={!selectedSourceKho}
-                        >
-                          {sourceInventory.map((sp) => (
-                            <Option
-                              key={sp.maSP}
-                              value={sp.maSP}
-                            >
-                              {sp.tenSP} (Tồn: {sp.soLuongTon})
-                            </Option>
-                          ))}
-                        </Select>
-                      </Form.Item>
-                    </Col>
+          <Col xs={24} md={10}>
+            <Form.Item
+              {...restField}
+              name={[name, "maSP"]}
+              label={!screens.md ? "Sản phẩm" : null}
+              rules={[{ required: true, message: "Chọn sản phẩm" }]}
+              style={{ marginBottom: 0 }}
+            >
+              <Select
+                style={{ width: "100%" }}
+                placeholder={
+                  selectedSourceKho
+                    ? "Chọn sản phẩm"
+                    : "Chọn Kho Xuất trước"
+                }
+                showSearch
+                optionFilterProp="children"
+                disabled={!selectedSourceKho}
+                // [MỚI] Khi đổi sản phẩm -> Reset số lô
+                onChange={() => {
+                   form.setFieldValue(["chiTiet", name, "soLo"], null);
+                }}
+              >
+                {/* [MỚI] Lọc danh sách để chỉ hiển thị tên SP duy nhất (tránh trùng lặp nếu 1 SP có nhiều lô) */}
+                {[...new Map(sourceInventory.map(item => [item.maSP, item])).values()].map((sp) => (
+                  <Option key={sp.maSP} value={sp.maSP}>
+                    {sp.tenSP} (Tổng tồn: {sourceInventory.filter(x => x.maSP === sp.maSP).reduce((sum, item) => sum + item.soLuongTon, 0)})
+                  </Option>
+                ))}
+              </Select>
+            </Form.Item>
+          </Col>
 
-                    {/* 2. Số lô [MỚI] */}
-                    <Col
-                      xs={12}
-                      md={6}
+          {/* 2. Số lô [ĐÃ SỬA] - Hiển thị Dropdown theo Sản phẩm */}
+          <Col xs={12} md={6}>
+            {/* Sử dụng dependencies để re-render khi maSP thay đổi */}
+            <Form.Item
+              shouldUpdate={(prevValues, curValues) =>
+                prevValues.chiTiet?.[name]?.maSP !== curValues.chiTiet?.[name]?.maSP
+              }
+              noStyle
+            >
+              {({ getFieldValue }) => {
+                // Lấy ID sản phẩm dòng hiện tại
+                const currentSP = getFieldValue(["chiTiet", name, "maSP"]);
+                
+                // Lọc ra các lô thuộc sản phẩm đó từ kho nguồn
+                const availableLots = sourceInventory.filter(
+                  (item) => item.maSP === currentSP && item.soLo && item.soLo !== "PENDING"
+                );
+
+                return (
+                  <Form.Item
+                    {...restField}
+                    name={[name, "soLo"]}
+                    label={!screens.md ? "Số lô" : null}
+                    style={{ marginBottom: 0 }}
+                  >
+                    <Select
+                      placeholder="Chọn lô (hoặc để trống)"
+                      allowClear // [QUAN TRỌNG] Cho phép để trống
+                      disabled={!currentSP} // Chưa chọn SP thì khóa lại
                     >
-                      <Form.Item
-                        {...restField}
-                        name={[name, "soLo"]}
-                        label={!screens.md ? "Số lô" : null}
-                        style={{ marginBottom: 0 }}
-                      >
-                        <Input placeholder="Số lô" />
-                      </Form.Item>
+                      {availableLots.map((lot, index) => (
+                        <Option key={`${lot.soLo}_${index}`} value={lot.soLo}>
+                          {lot.soLo} (Tồn: {lot.soLuongTon})
+                        </Option>
+                      ))}
+                    </Select>
+                  </Form.Item>
+                );
+              }}
+            </Form.Item>
                     </Col>
 
                     {/* 3. Số lượng */}
@@ -1000,14 +1026,30 @@ const TransferPage = () => {
                   </Row>
                 ))}
                 <Form.Item style={{ marginTop: 10 }}>
+                  {/* [SỬA LẠI] Bỏ điều kiện ẩn hiện, thêm thuộc tính disabled */}
                   <Button
                     type="dashed"
                     onClick={() => add()}
                     block
                     icon={<PlusOutlined />}
+                    disabled={!selectedSourceKho} // <--- Dòng quan trọng: Nếu chưa chọn kho (null) thì disable
                   >
                     Thêm sản phẩm
                   </Button>
+
+                  {/* Hiển thị thông báo nhỏ nhắc người dùng nếu họ chưa chọn kho (Tùy chọn) */}
+                  {!selectedSourceKho && (
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        color: "#999",
+                        marginTop: 5,
+                        textAlign: "center",
+                      }}
+                    >
+                    </div>
+                  )}
+
                   {errors && errors.length > 0 && (
                     <div style={{ color: "#ff4d4f", marginTop: "8px" }}>
                       {errors.map((error, index) => (

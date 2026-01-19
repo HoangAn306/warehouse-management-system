@@ -302,7 +302,7 @@ const SystemLogPage = () => {
   // --- 5. CẤU HÌNH CỘT BẢNG ---
   const columns = [
     {
-      title: "Mã HD",
+      title: "Mã hoạt động",
       dataIndex: "maHD",
       width: 80,
       fixed: screens.md ? "left" : null, // Ghim trái trên PC

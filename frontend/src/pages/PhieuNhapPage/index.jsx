@@ -130,9 +130,8 @@ const PhieuNhapPage = () => {
             toDate: dateRange ? dateRange[1].format("YYYY-MM-DD") : null,
           };
 
-          const response = await phieuNhapService.filterPhieuNhap(
-            filterPayload
-          );
+          const response =
+            await phieuNhapService.filterPhieuNhap(filterPayload);
 
           if (response.data) {
             // A. Nếu API hỗ trợ phân trang (trả về { content: [], totalElements: ... })
@@ -171,7 +170,7 @@ const PhieuNhapPage = () => {
 
           if (Array.isArray(allData)) {
             allData.sort(
-              (a, b) => new Date(b.ngayLapPhieu) - new Date(a.ngayLapPhieu)
+              (a, b) => new Date(b.ngayLapPhieu) - new Date(a.ngayLapPhieu),
             );
 
             const startIndex = (page - 1) * pageSize;
@@ -195,7 +194,7 @@ const PhieuNhapPage = () => {
       }
       setLoading(false);
     },
-    [messageApi]
+    [messageApi],
   );
 
   const fetchCommonData = useCallback(async () => {
@@ -387,7 +386,7 @@ const PhieuNhapPage = () => {
           if (editingRecord) {
             await phieuNhapService.updatePhieuNhap(
               editingRecord.maPhieuNhap,
-              submitData
+              submitData,
             );
             messageApi.success("Cập nhật thành công!");
           } else {
@@ -872,7 +871,7 @@ const PhieuNhapPage = () => {
                 validator: async (_, names) => {
                   if (!names || names.length < 1) {
                     return Promise.reject(
-                      new Error("Vui lòng thêm ít nhất một sản phẩm!")
+                      new Error("Vui lòng thêm ít nhất một sản phẩm!"),
                     );
                   }
                 },
@@ -1001,7 +1000,7 @@ const PhieuNhapPage = () => {
                       >
                         <InputNumber
                           min={0}
-                          step={0.01}
+                          step={1}
                           style={{ width: "100%" }}
                           placeholder="Đơn giá"
                           // [SỬA LỖI] Formatter: Chỉ thêm dấu phẩy cho phần nguyên
@@ -1014,7 +1013,7 @@ const PhieuNhapPage = () => {
                             // Định dạng phần nguyên có dấu phẩy
                             const formattedInteger = integer.replace(
                               /\B(?=(\d{3})+(?!\d))/g,
-                              ","
+                              ",",
                             );
 
                             // Nếu có phần thập phân thì ghép lại, không thì trả về phần nguyên

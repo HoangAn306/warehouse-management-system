@@ -130,9 +130,8 @@ const PhieuXuatPage = () => {
             toDate: dateRange ? dateRange[1].format("YYYY-MM-DD") : null,
           };
 
-          const response = await phieuXuatService.filterPhieuXuat(
-            filterPayload
-          );
+          const response =
+            await phieuXuatService.filterPhieuXuat(filterPayload);
 
           if (response.data) {
             // A. Nếu API trả về dạng phân trang chuẩn { content: [], totalElements: ... }
@@ -171,7 +170,7 @@ const PhieuXuatPage = () => {
           if (Array.isArray(allData)) {
             // Sắp xếp mới nhất lên đầu
             allData.sort(
-              (a, b) => new Date(b.ngayLapPhieu) - new Date(a.ngayLapPhieu)
+              (a, b) => new Date(b.ngayLapPhieu) - new Date(a.ngayLapPhieu),
             );
 
             const startIndex = (page - 1) * pageSize;
@@ -195,7 +194,7 @@ const PhieuXuatPage = () => {
       }
       setLoading(false);
     },
-    [messageApi]
+    [messageApi],
   );
 
   const fetchCommonData = useCallback(async () => {
@@ -354,7 +353,7 @@ const PhieuXuatPage = () => {
       }
       if (!checkPerm(PERM_EDIT_APPROVED) && !isAdmin) {
         messageApi.warning(
-          "Bạn không có quyền sửa phiếu đã duyệt (Cần quyền 121)!"
+          "Bạn không có quyền sửa phiếu đã duyệt (Cần quyền 121)!",
         );
         return;
       }
@@ -365,7 +364,7 @@ const PhieuXuatPage = () => {
 
     try {
       const response = await phieuXuatService.getPhieuXuatById(
-        record.maPhieuXuat
+        record.maPhieuXuat,
       );
       const fullData = response.data;
 
@@ -389,7 +388,7 @@ const PhieuXuatPage = () => {
   const handleViewDetail = async (record) => {
     try {
       const response = await phieuXuatService.getPhieuXuatById(
-        record.maPhieuXuat
+        record.maPhieuXuat,
       );
       setViewingPhieuXuat(response.data);
       setIsDetailModalOpen(true);
@@ -406,7 +405,7 @@ const PhieuXuatPage = () => {
           if (editingRecord) {
             await phieuXuatService.updatePhieuXuat(
               editingRecord.maPhieuXuat,
-              values
+              values,
             );
             messageApi.success("Cập nhật phiếu xuất thành công!");
           } else {
@@ -865,7 +864,7 @@ const PhieuXuatPage = () => {
                 validator: async (_, names) => {
                   if (!names || names.length < 1) {
                     return Promise.reject(
-                      new Error("Vui lòng thêm ít nhất một sản phẩm!")
+                      new Error("Vui lòng thêm ít nhất một sản phẩm!"),
                     );
                   }
                 },
@@ -885,7 +884,7 @@ const PhieuXuatPage = () => {
                     }}
                     align="middle"
                   >
-                    {/* 1. Sản Phẩm */}
+                    {/* 1. SẢN PHẨM (ĐÃ SỬA) */}
                     <Col
                       xs={24}
                       md={7}
@@ -907,32 +906,88 @@ const PhieuXuatPage = () => {
                           showSearch
                           optionFilterProp="children"
                           disabled={!selectedKho}
+                          // [QUAN TRỌNG] Khi đổi sản phẩm -> Reset số lô
+                          onChange={() => {
+                            form.setFieldValue(["chiTiet", name, "soLo"], null);
+                          }}
                         >
-                          {currentInventory.map((sp) => (
+                          {/* Lọc danh sách SP duy nhất và tính tổng tồn kho */}
+                          {[
+                            ...new Map(
+                              currentInventory.map((item) => [item.maSP, item]),
+                            ).values(),
+                          ].map((sp) => (
                             <Option
                               key={sp.maSP}
                               value={sp.maSP}
                             >
-                              {sp.tenSP} (Tồn: {sp.soLuongTon})
+                              {sp.tenSP} (Tổng tồn:{" "}
+                              {currentInventory
+                                .filter((x) => x.maSP === sp.maSP)
+                                .reduce(
+                                  (sum, item) => sum + item.soLuongTon,
+                                  0,
+                                )}
+                              )
                             </Option>
                           ))}
                         </Select>
                       </Form.Item>
                     </Col>
 
-                    {/* 2. Số lô (MỚI THÊM) */}
+                    {/* 2. SỐ LÔ (ĐÃ SỬA - DYNAMIC DROPDOWN) */}
                     <Col
                       xs={12}
                       md={4}
                     >
+                      {/* Sử dụng shouldUpdate để re-render khi maSP thay đổi */}
                       <Form.Item
-                        {...restField}
-                        name={[name, "soLo"]}
-                        label={!screens.md ? "Số lô" : null}
-                        // Xóa rules required để không bắt buộc nhập khi sửa
-                        style={{ marginBottom: 0 }}
+                        shouldUpdate={(prevValues, curValues) =>
+                          prevValues.chiTiet?.[name]?.maSP !==
+                          curValues.chiTiet?.[name]?.maSP
+                        }
+                        noStyle
                       >
-                        <Input placeholder="Số lô" />
+                        {({ getFieldValue }) => {
+                          // Lấy ID sản phẩm của dòng hiện tại
+                          const currentSP = getFieldValue([
+                            "chiTiet",
+                            name,
+                            "maSP",
+                          ]);
+
+                          // Lọc ra các lô thuộc sản phẩm đó trong kho
+                          const availableBatches = currentInventory.filter(
+                            (item) =>
+                              item.maSP === currentSP &&
+                              item.soLo &&
+                              item.soLo !== "PENDING",
+                          );
+
+                          return (
+                            <Form.Item
+                              {...restField}
+                              name={[name, "soLo"]}
+                              label={!screens.md ? "Số lô" : null}
+                              style={{ marginBottom: 0 }}
+                            >
+                              <Select
+                                placeholder="Chọn lô"
+                                allowClear
+                                disabled={!currentSP} // Khóa nếu chưa chọn SP
+                              >
+                                {availableBatches.map((batch, index) => (
+                                  <Option
+                                    key={`${batch.soLo}_${index}`}
+                                    value={batch.soLo}
+                                  >
+                                    {batch.soLo}
+                                  </Option>
+                                ))}
+                              </Select>
+                            </Form.Item>
+                          );
+                        }}
                       </Form.Item>
                     </Col>
 
@@ -956,7 +1011,7 @@ const PhieuXuatPage = () => {
                                 "maSP",
                               ]);
                               const inStock = currentInventory.find(
-                                (i) => i.maSP === selectedSP
+                                (i) => i.maSP === selectedSP,
                               );
                               if (inStock && value > inStock.soLuongTon)
                                 return Promise.reject(new Error(`Quá tồn kho`));
@@ -991,7 +1046,7 @@ const PhieuXuatPage = () => {
                       >
                         <InputNumber
                           min={0}
-                          step={0.01}
+                          step={1}
                           style={{ width: "100%" }}
                           placeholder="Đơn giá"
                           // [SỬA LỖI] Formatter: Chỉ thêm dấu phẩy cho phần nguyên
@@ -1004,7 +1059,7 @@ const PhieuXuatPage = () => {
                             // Định dạng phần nguyên có dấu phẩy
                             const formattedInteger = integer.replace(
                               /\B(?=(\d{3})+(?!\d))/g,
-                              ","
+                              ",",
                             );
 
                             // Nếu có phần thập phân thì ghép lại, không thì trả về phần nguyên
@@ -1046,9 +1101,23 @@ const PhieuXuatPage = () => {
                     onClick={() => add()}
                     block
                     icon={<PlusOutlined />}
+                    // [THÊM DÒNG NÀY] Nếu chưa chọn kho (selectedKho = null) thì Disable nút
+                    disabled={!selectedKho}
                   >
                     Thêm sản phẩm
                   </Button>
+
+                  {/* [THÊM DÒNG NÀY] Hiển thị nhắc nhở nhỏ */}
+                  {!selectedKho && (
+                    <div
+                      style={{
+                        color: "#999",
+                        fontSize: "12px",
+                        marginTop: "5px",
+                        textAlign: "center",
+                      }}
+                    ></div>
+                  )}
                   {errors && errors.length > 0 && (
                     <div style={{ color: "#ff4d4f", marginTop: "8px" }}>
                       {errors.map((error, index) => (
