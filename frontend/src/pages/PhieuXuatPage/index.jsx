@@ -448,9 +448,13 @@ const PhieuXuatPage = () => {
       await phieuXuatService.approvePhieuXuat(id);
       messageApi.success("Đã duyệt!");
       fetchData(pagination.current, pagination.pageSize, filter);
-    } catch (e) {
-      messageApi.error("Lỗi duyệt!");
-    }
+    } catch (error) {
+          const errorMessage =
+            error.response?.data?.message ||
+            error.response?.data ||
+            "Lỗi xử lý!";
+          messageApi.error(errorMessage);
+        }
   };
   const handleReject = async (id) => {
     try {
